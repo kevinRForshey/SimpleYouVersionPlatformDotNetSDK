@@ -3,6 +3,7 @@
 @inject ITokenProvider TokenProvider
 @inject IBibleReaderStateService State
 @inject NavigationManager Nav
+@inject Microsoft.Extensions.Hosting.IHostEnvironment HostEnvironment
 @implements IDisposable
 
 <PageTitle>YouVersion Bible Reader</PageTitle>
@@ -22,7 +23,7 @@
             @if (_isSignedIn)
             {
                 <span class="me-3 text-muted small">
-                    Signed in as <strong>@(_userName ?? "YouVersion User")</strong>
+                    You are logged in as: <strong>@(_userName ?? "YouVersion User")</strong>
                 </span>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="SignOut">Sign out</button>
             }
@@ -32,6 +33,19 @@
             }
         </div>
     </div>
+
+    @if (HostEnvironment.IsDevelopment())
+    {
+        <div class="alert alert-secondary py-2 px-3 mb-3 small">
+            <strong>Auth debug</strong>
+            <span class="ms-2">Token: <code>@(_debugTokenPresent ? "present" : "absent")</code></span>
+            <span class="ms-2">Identity: <code>@(_debugIdentity ?? "(none)")</code></span>
+            <span class="ms-2">Callback mode: <code>@(AuthMode ?? "(none)")</code></span>
+            <button class="btn btn-sm btn-outline-secondary ms-3" @onclick="ClearAuthDebugState">
+                Clear auth
+            </button>
+        </div>
+    }
 
     @* ── Picker toolbar ──────────────────────────────────────────────── *@
     <div class="row g-3 mb-4">
@@ -66,9 +80,14 @@
     [SupplyParameterFromQuery(Name = "oauth_error")]
     public string? OAuthError { get; set; }
 
+    [SupplyParameterFromQuery(Name = "auth_mode")]
+    public string? AuthMode { get; set; }
+
     private PassageDisplay? _passageDisplay;
     private bool _isSignedIn;
     private string? _userName;
+    private bool _debugTokenPresent;
+    private string? _debugIdentity;
     private string? _copyright;
 
     protected override async Task OnInitializedAsync()
@@ -90,12 +109,15 @@
     {
         var token = await TokenProvider.GetTokenAsync();
         var signedIn = token is not null && !token.IsExpired();
-        var userName = token?.GetUserName();
+        var userName = token?.GetDisplayIdentity();
+        var tokenPresent = token is not null;
 
-        if (signedIn != _isSignedIn || userName != _userName)
+        if (signedIn != _isSignedIn || userName != _userName || tokenPresent != _debugTokenPresent)
         {
             _isSignedIn = signedIn;
             _userName   = userName;
+            _debugTokenPresent = tokenPresent;
+            _debugIdentity = userName;
             StateHasChanged();
         }
     }
@@ -114,6 +136,7 @@
 
     private void SignIn()  => Nav.NavigateTo("/auth/login",  forceLoad: true);
     private void SignOut() => Nav.NavigateTo("/auth/logout", forceLoad: true);
+    private void ClearAuthDebugState() => Nav.NavigateTo("/auth/logout", forceLoad: true);
 
     private void OnStateChangedHandler()
         => InvokeAsync(StateHasChanged);

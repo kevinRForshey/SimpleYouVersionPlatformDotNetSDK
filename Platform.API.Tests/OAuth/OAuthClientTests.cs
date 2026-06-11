@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -258,6 +259,64 @@ public sealed class OAuthClientTests
         token.IsExpired(bufferSeconds: 60).Should().BeTrue();
     }
 
+    [Fact]
+    public void IsExpired_ReturnsFalse_WhenExpiresInMissing_ButAccessTokenExists()
+    {
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = "opaque-access-token",
+            ExpiresIn = 0,
+            ReceivedAt = DateTimeOffset.UtcNow.AddHours(-1)
+        };
+
+        token.IsExpired().Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsExpired_UsesJwtExpClaim_WhenExpiresInMissing()
+    {
+        var exp = DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString();
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = BuildUnsignedJwt("exp", exp),
+            ExpiresIn = 0,
+            ReceivedAt = DateTimeOffset.UtcNow.AddHours(-1)
+        };
+
+        token.IsExpired(bufferSeconds: 60).Should().BeFalse();
+    }
+
+    // -------------------------------------------------------------------------
+    // OAuthTokenResponse identity helpers
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void GetDisplayIdentity_ReturnsEmail_WhenNameIsMissing()
+    {
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = BuildUnsignedJwt("email", "kevin@example.com"),
+            ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow
+        };
+
+        token.GetDisplayIdentity().Should().Be("kevin@example.com");
+    }
+
+    [Fact]
+    public void GetDisplayIdentity_FallsBackToSubject_WhenNameAndEmailMissing()
+    {
+        var token = new OAuthTokenResponse
+        {
+            IdToken = BuildUnsignedJwt("sub", "user-123"),
+            AccessToken = "not-a-jwt",
+            ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow
+        };
+
+        token.GetDisplayIdentity().Should().Be("user-123");
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
@@ -284,5 +343,17 @@ public sealed class OAuthClientTests
             options,
             tokenProvider ?? new FakeTokenProvider(),
             NullLogger<YouVersionOAuthClient>.Instance);
+    }
+
+    private static string BuildUnsignedJwt(string claimName, string claimValue)
+    {
+        var payload = $"{{\"{claimName}\":\"{claimValue}\"}}";
+        var payloadBytes = Encoding.UTF8.GetBytes(payload);
+        var payloadBase64Url = Convert.ToBase64String(payloadBytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+        return $"header.{payloadBase64Url}.signature";
     }
 }

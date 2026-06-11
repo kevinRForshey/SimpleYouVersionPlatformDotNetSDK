@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 using Platform.API.Extensions;
 using Platform.API.OAuth;
@@ -13,7 +15,14 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddYouVersionApiClients(builder.Configuration);
-builder.Services.AddYouVersionOAuth(o => builder.Configuration.GetSection("YouVersionOAuth").Bind(o));
+builder.Services.AddYouVersionOAuth(o =>
+{
+    builder.Configuration.GetSection("YouVersionOAuth").Bind(o);
+
+    // YouVersion apps can use the app key as the OAuth client identifier.
+    if (string.IsNullOrWhiteSpace(o.ClientId))
+        o.ClientId = builder.Configuration["YouVersionApi:AppKey"] ?? string.Empty;
+});
 
 // App-layer services
 builder.Services.AddHttpContextAccessor();
@@ -55,6 +64,35 @@ app.Use(async (ctx, next) =>
         ctx.Response.Redirect("/auth/callback-complete");
         return;
     }
+
+    // Some YouVersion callback flows provide identity data directly in the query string.
+    // Store a lightweight token so the Blazor UI can show signed-in state consistently.
+    if (ctx.Request.Path == "/" &&
+        (ctx.Request.Query.ContainsKey("user_name") || ctx.Request.Query.ContainsKey("user_email")))
+    {
+        var userName = ctx.Request.Query["user_name"].ToString();
+        var userEmail = ctx.Request.Query["user_email"].ToString();
+
+        var tokenProvider = ctx.RequestServices.GetRequiredService<ITokenProvider>();
+        var claims = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(userName))
+            claims["name"] = userName;
+        if (!string.IsNullOrWhiteSpace(userEmail))
+            claims["email"] = userEmail;
+
+        var syntheticIdToken = BuildUnsignedJwt(claims);
+        await tokenProvider.StoreTokenAsync(new OAuthTokenResponse
+        {
+            AccessToken = "oauth-session-user",
+            IdToken = syntheticIdToken,
+            ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow
+        });
+
+        ctx.Response.Redirect("/?auth_mode=direct");
+        return;
+    }
+
     await next(ctx);
 });
 
@@ -122,11 +160,23 @@ app.MapGet("/auth/callback-complete", async (IYouVersionOAuthClient oauthClient,
     ctx.Session.Remove("oauth_state");
 
     return exchangeError is not null
-        ? Results.Redirect($"/?oauth_error={Uri.EscapeDataString(exchangeError)}")
-        : Results.Redirect("/");
+        ? Results.Redirect($"/?oauth_error={Uri.EscapeDataString(exchangeError)}&auth_mode=code")
+        : Results.Redirect("/?auth_mode=code");
 });
 
 app.Run();
 
 static string Base64Url(byte[] bytes) =>
     Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+static string BuildUnsignedJwt(IReadOnlyDictionary<string, string> claims)
+{
+    var payloadJson = JsonSerializer.Serialize(claims);
+    var payload = Convert.ToBase64String(Encoding.UTF8.GetBytes(payloadJson))
+        .TrimEnd('=')
+        .Replace('+', '-')
+        .Replace('/', '_');
+
+    return $"header.{payload}.signature";
+}
+

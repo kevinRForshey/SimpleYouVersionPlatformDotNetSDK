@@ -28,6 +28,7 @@ public sealed record OAuthTokenResponse
 
     /// <summary>The lifetime of the access token in seconds.</summary>
     [JsonPropertyName("expires_in")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
     public int ExpiresIn { get; init; }
 
     /// <summary>
@@ -41,8 +42,21 @@ public sealed record OAuthTokenResponse
     /// Returns <see langword="true"/> if the access token is expired or within
     /// <paramref name="bufferSeconds"/> of expiring.
     /// </summary>
-    public bool IsExpired(int bufferSeconds = 60) =>
-        DateTimeOffset.UtcNow >= ReceivedAt.AddSeconds(ExpiresIn - bufferSeconds);
+    public bool IsExpired(int bufferSeconds = 60)
+    {
+        if (string.IsNullOrWhiteSpace(AccessToken))
+            return true;
+
+        if (ExpiresIn > 0)
+            return DateTimeOffset.UtcNow >= ReceivedAt.AddSeconds(ExpiresIn - bufferSeconds);
+
+        var exp = GetUnixTimeClaimFromJwt(IdToken, "exp") ?? GetUnixTimeClaimFromJwt(AccessToken, "exp");
+        if (exp is long unixSeconds)
+            return DateTimeOffset.UtcNow >= DateTimeOffset.FromUnixTimeSeconds(unixSeconds).AddSeconds(-bufferSeconds);
+
+        // Some providers omit explicit expiration in exchange responses.
+        return false;
+    }
 
     /// <summary>
     /// Decodes the <see cref="IdToken"/> JWT payload and returns the value of the
@@ -53,15 +67,33 @@ public sealed record OAuthTokenResponse
 
     /// <summary>
     /// Returns the user's display name by searching common OIDC claim names
-    /// (<c>name</c>, <c>preferred_username</c>) in the ID token first, then
-    /// falling back to the same claims in the access token (which is often a JWT
-    /// that contains user identity even when no <c>id_token</c> is issued).
+    /// in the ID token first, then the access token.
     /// </summary>
     public string? GetUserName() =>
         GetClaimFromJwt(IdToken, "name") ??
         GetClaimFromJwt(IdToken, "preferred_username") ??
         GetClaimFromJwt(AccessToken, "name") ??
         GetClaimFromJwt(AccessToken, "preferred_username");
+
+    /// <summary>
+    /// Returns the user's email address by searching common claim names
+    /// in the ID token first, then the access token.
+    /// </summary>
+    public string? GetEmail() =>
+        GetClaimFromJwt(IdToken, "email") ??
+        GetClaimFromJwt(IdToken, "upn") ??
+        GetClaimFromJwt(AccessToken, "email") ??
+        GetClaimFromJwt(AccessToken, "upn");
+
+    /// <summary>
+    /// Returns the best available user identifier for display in the UI.
+    /// Prefers name, then email, then subject.
+    /// </summary>
+    public string? GetDisplayIdentity() =>
+        GetUserName() ??
+        GetEmail() ??
+        GetClaimFromJwt(IdToken, "sub") ??
+        GetClaimFromJwt(AccessToken, "sub");
 
     /// <summary>
     /// Decodes the Base64Url-encoded payload of <paramref name="jwt"/> and returns
@@ -82,6 +114,36 @@ public sealed record OAuthTokenResponse
             var json = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
             using var doc = JsonDocument.Parse(json);
             return doc.RootElement.TryGetProperty(claimName, out var val) ? val.GetString() : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static long? GetUnixTimeClaimFromJwt(string? jwt, string claimName)
+    {
+        if (string.IsNullOrEmpty(jwt)) return null;
+        var parts = jwt.Split('.');
+        if (parts.Length < 2) return null;
+
+        var padded = parts[1].Replace('-', '+').Replace('_', '/');
+        padded += new string('=', (4 - padded.Length % 4) % 4);
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+            using var doc = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty(claimName, out var val))
+                return null;
+
+            return val.ValueKind switch
+            {
+                JsonValueKind.Number when val.TryGetInt64(out var n) => n,
+                JsonValueKind.String when long.TryParse(val.GetString(), out var n) => n,
+                _ => null
+            };
         }
         catch
         {
