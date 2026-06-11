@@ -1,0 +1,67 @@
+@inject IVersionService VersionService
+@inject IBibleReaderStateService State
+
+<div class="bible-picker">
+    <label class="form-label fw-semibold" for="version-select">Bible Version</label>
+    @if (_loading)
+    {
+        <div class="spinner-border spinner-border-sm text-primary" role="status">
+            <span class="visually-hidden">Loading versions…</span>
+        </div>
+    }
+    else if (_error is not null)
+    {
+        <div class="alert alert-warning py-1 px-2 small">@_error</div>
+    }
+    else
+    {
+        <select id="version-select"
+                class="form-select"
+                value="@(_selected?.Id.ToString() ?? "")"
+                @onchange="OnVersionChanged">
+            <option value="">— Select a version —</option>
+            @foreach (var v in _versions)
+            {
+                <option value="@v.Id">@v.Abbreviation — @v.LocalizedTitle</option>
+            }
+        </select>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<BibleVersionSummary> _versions = [];
+    private BibleVersionSummary? _selected;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _versions = await VersionService.GetVersionsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load Bible versions: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnVersionChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id))
+        {
+            _selected = _versions.FirstOrDefault(v => v.Id == id);
+            if (_selected is not null)
+                State.SelectVersion(_selected);
+        }
+        else
+        {
+            _selected = null;
+            State.Reset();
+        }
+    }
+}

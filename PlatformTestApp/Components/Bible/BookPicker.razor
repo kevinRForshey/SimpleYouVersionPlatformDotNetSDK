@@ -1,0 +1,93 @@
+@using Platform.API.Models
+@inject IBibleReaderStateService State
+@inject IBookService BookService
+@implements IDisposable
+
+<div class="bible-picker">
+    <label class="form-label fw-semibold" for="book-select">Book</label>
+    @if (State.SelectedVersion is null)
+    {
+        <p class="text-muted small">Select a version first.</p>
+    }
+    else if (_loading)
+    {
+        <div class="spinner-border spinner-border-sm text-primary" role="status">
+            <span class="visually-hidden">Loading books…</span>
+        </div>
+    }
+    else if (_error is not null)
+    {
+        <div class="alert alert-warning py-1 px-2 small">@_error</div>
+    }
+    else
+    {
+        <select id="book-select"
+                class="form-select"
+                value="@(State.SelectedBook?.Usfm ?? "")"
+                @onchange="OnBookChanged">
+            <option value="">— Select a book —</option>
+            @foreach (var b in _books)
+            {
+                <option value="@b.Usfm">@b.Human</option>
+            }
+        </select>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<Book> _books = [];
+    private int _loadedForVersion;
+    private bool _loading;
+    private string? _error;
+
+    protected override void OnInitialized()
+        => State.OnStateChanged += OnStateChangedHandler;
+
+    protected override async Task OnParametersSetAsync()
+        => await LoadBooksIfNeededAsync();
+
+    private async void OnStateChangedHandler()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadBooksIfNeededAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadBooksIfNeededAsync()
+    {
+        var version = State.SelectedVersion;
+        if (version is null || version.Id == _loadedForVersion) return;
+
+        _loading = true;
+        _error = null;
+        _books = [];
+        _loadedForVersion = version.Id;
+        StateHasChanged();
+
+        try
+        {
+            _books = await BookService.GetBooksAsync(version.Id);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load books: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnBookChanged(ChangeEventArgs e)
+    {
+        var usfm = e.Value?.ToString();
+        var book = _books.FirstOrDefault(b => b.Usfm == usfm);
+        if (book is not null)
+            State.SelectBook(book);
+    }
+
+    public void Dispose()
+        => State.OnStateChanged -= OnStateChangedHandler;
+}

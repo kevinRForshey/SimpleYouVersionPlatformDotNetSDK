@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="../../../../../../../../SourceCode/YouVersion/YouVersionPlatform/Platform.API.Models/Platform.API.Models.csproj" Id="7d23a20f-2b28-42de-bf45-bfe53ba0fc5d" />
+  <Project Path="../../../../../../../../SourceCode/YouVersion/YouVersionPlatform/Platform.API/Platform.API.csproj" Id="a35d6648-dbb9-47dc-a3d3-e0b7f003d365" />
+  <Project Path="../../../../../../../../SourceCode/YouVersion/YouVersionPlatform/PlatformTestApp/PlatformTestApp.csproj" Id="1782fe19-08bd-4659-b95f-6a9c32b26100" />
+</Solution>

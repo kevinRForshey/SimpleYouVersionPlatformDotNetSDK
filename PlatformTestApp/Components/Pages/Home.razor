@@ -1,0 +1,124 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@inject ITokenProvider TokenProvider
+@inject IBibleReaderStateService State
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>YouVersion Bible Reader</PageTitle>
+
+<div class="bible-reader-page">
+
+    @* ── Login banner ─────────────────────────────────────────────────── *@
+    <div class="bible-reader-header d-flex align-items-center justify-content-between mb-4">
+        <h2 class="mb-0">
+            <span class="yv-logo-icon" aria-hidden="true">✝</span> Bible Reader
+        </h2>
+        <div class="auth-status">
+            @if (OAuthError is not null)
+            {
+                <span class="me-2 text-danger small">@OAuthError</span>
+            }
+            @if (_isSignedIn)
+            {
+                <span class="me-3 text-muted small">
+                    Signed in as <strong>@(_userName ?? "YouVersion User")</strong>
+                </span>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="SignOut">Sign out</button>
+            }
+            else
+            {
+                <button class="btn btn-sm btn-primary" @onclick="SignIn">Sign in with YouVersion</button>
+            }
+        </div>
+    </div>
+
+    @* ── Picker toolbar ──────────────────────────────────────────────── *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-md-3">
+            <VersionPicker />
+        </div>
+        <div class="col-12 col-md-3">
+            <BookPicker />
+        </div>
+        <div class="col-12 col-md-2">
+            <ChapterPicker />
+        </div>
+        <div class="col-12 col-md-3">
+            <VersePicker />
+        </div>
+        <div class="col-12 col-md-1 d-flex align-items-end">
+            <button class="btn btn-primary w-100"
+                    @onclick="ReadPassageAsync"
+                    disabled="@(!CanRead)">
+                Read
+            </button>
+        </div>
+    </div>
+
+    @* ── Passage area ────────────────────────────────────────────────── *@
+    <PassageDisplay Copyright="@_copyright" @ref="_passageDisplay" />
+
+</div>
+
+@code {
+    // Populated when the OAuth callback redirects with ?oauth_error=...
+    [SupplyParameterFromQuery(Name = "oauth_error")]
+    public string? OAuthError { get; set; }
+
+    private PassageDisplay? _passageDisplay;
+    private bool _isSignedIn;
+    private string? _userName;
+    private string? _copyright;
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.OnStateChanged += OnStateChangedHandler;
+        await CheckSignInAsync();
+    }
+
+    // Re-check sign-in state on the first interactive render so the circuit always
+    // reflects the token stored during the OAuth callback, even if the prerender and
+    // circuit DI scopes briefly disagree.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await CheckSignInAsync();
+    }
+
+    private async Task CheckSignInAsync()
+    {
+        var token = await TokenProvider.GetTokenAsync();
+        var signedIn = token is not null && !token.IsExpired();
+        var userName = token?.GetUserName();
+
+        if (signedIn != _isSignedIn || userName != _userName)
+        {
+            _isSignedIn = signedIn;
+            _userName   = userName;
+            StateHasChanged();
+        }
+    }
+
+    private bool CanRead =>
+        State.SelectedVersion is not null &&
+        State.SelectedBook is not null &&
+        State.SelectedChapter is not null &&
+        State.SelectedVerseStart is not null;
+
+    private async Task ReadPassageAsync()
+    {
+        if (_passageDisplay is not null)
+            await _passageDisplay.LoadAsync();
+    }
+
+    private void SignIn()  => Nav.NavigateTo("/auth/login",  forceLoad: true);
+    private void SignOut() => Nav.NavigateTo("/auth/logout", forceLoad: true);
+
+    private void OnStateChangedHandler()
+        => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+        => State.OnStateChanged -= OnStateChangedHandler;
+}
+
