@@ -35,9 +35,9 @@ internal sealed class YouVersionOAuthClient : IYouVersionOAuthClient
     }
 
     /// <inheritdoc />
-    public Uri BuildAuthorizationUrl(out PkceValues pkce, string? state = null)
+    public AuthorizationRequest BuildAuthorizationUrl(string? state = null)
     {
-        pkce = GeneratePkce();
+        var pkce = GeneratePkce();
         var resolvedState = state ?? Base64UrlEncode(RandomNumberGenerator.GetBytes(16));
         var nonce = Base64UrlEncode(RandomNumberGenerator.GetBytes(24));
 
@@ -63,7 +63,7 @@ internal sealed class YouVersionOAuthClient : IYouVersionOAuthClient
         var url = new Uri(_options.AuthorizationEndpoint + query.ToString());
 
         _logger.LogDebug("Building authorization URL.");
-        return url;
+        return new AuthorizationRequest { AuthorizationUrl = url, Pkce = pkce };
     }
 
     /// <inheritdoc />
@@ -133,9 +133,11 @@ internal sealed class YouVersionOAuthClient : IYouVersionOAuthClient
         Dictionary<string, string> formData,
         CancellationToken cancellationToken)
     {
+        // Use the absolute token endpoint URL directly. HttpClient.BaseAddress is not
+        // configured for this client; absolute URIs bypass BaseAddress cleanly.
         using var content = new FormUrlEncodedContent(formData);
         using var response = await _httpClient
-            .PostAsync(_options.TokenEndpoint, content, cancellationToken)
+            .PostAsync(_options.TokenEndpoint.AbsoluteUri, content, cancellationToken)
             .ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)

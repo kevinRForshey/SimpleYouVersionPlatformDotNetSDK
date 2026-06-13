@@ -34,10 +34,4 @@ public sealed class YouVersionApiOptions
     /// </summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
 
-    /// <summary>
-    /// How many seconds before a token's actual expiry to proactively refresh it inside
-    /// <see cref="Platform.API.Http.OAuthBearerTokenHandler"/>.
-    /// Defaults to 60 seconds.
-    /// </summary>
-    public int OAuthTokenExpiryBufferSeconds { get; set; } = 60;
-}
+    }

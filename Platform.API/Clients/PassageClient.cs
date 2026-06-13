@@ -1,11 +1,7 @@
-using System;
-using System.Net.Http;
-using System.Net.Http.Json;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Platform.API.Exceptions;
+using Platform.API.Http;
 using Platform.API.Models;
 
 namespace Platform.API.Clients;
@@ -36,22 +32,7 @@ internal sealed partial class PassageClient : IPassageClient
 
         _logger.LogDebug("Fetching passage {Usfm} from version {VersionId} (format={Format}).", usfm, versionId, resolvedOptions.Format);
 
-        using var response = await _httpClient
-            .GetAsync(url, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogError("Failed to fetch passage {Usfm} from version {VersionId}: HTTP {StatusCode} {ReasonPhrase}.", usfm, versionId, (int)response.StatusCode, response.ReasonPhrase);
-            throw new YouVersionApiException(
-                response.StatusCode,
-                $"YouVersion API request for passage '{usfm}' (version {versionId}) failed with status {(int)response.StatusCode} ({response.ReasonPhrase}).",
-                body);
-        }
-
-        var passage = await response.Content
-            .ReadFromJsonAsync<Passage>(cancellationToken: cancellationToken)
+        var passage = await ApiRequestHelper.GetJsonAsync<Passage>(_httpClient, url, _logger, cancellationToken)
             .ConfigureAwait(false);
 
         var result = passage ?? throw new YouVersionApiException(
@@ -73,7 +54,7 @@ internal sealed partial class PassageClient : IPassageClient
         sb.Append("/passages/");
         sb.Append(Uri.EscapeDataString(usfm));
         sb.Append("?format=");
-        sb.Append(options.Format == PassageFormat.Html ? "html" : "text");
+        sb.Append(options.Format.ToString().ToLowerInvariant());
 
         if (options.IncludeHeadings)
             sb.Append("&include_headings=true");

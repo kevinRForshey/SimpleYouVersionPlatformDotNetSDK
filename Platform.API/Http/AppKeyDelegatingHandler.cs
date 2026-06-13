@@ -28,6 +28,12 @@ internal sealed class AppKeyDelegatingHandler : DelegatingHandler
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(_options.AppKey))
+            throw new InvalidOperationException(
+                $"{nameof(YouVersionApiOptions)}.{nameof(YouVersionApiOptions.AppKey)} is not configured. " +
+                "Set it via AddYouVersionApiClients(options => options.AppKey = \"your-key\") " +
+                "or the YouVersionApi:AppKey configuration value.");
+
         request.Headers.TryAddWithoutValidation(AppKeyHeader, _options.AppKey);
         request.Headers.TryAddWithoutValidation(AcceptHeader, JsonMediaType);
 

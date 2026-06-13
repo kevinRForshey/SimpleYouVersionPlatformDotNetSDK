@@ -8,7 +8,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using Platform.API.Configuration;
 using Platform.API.Http;
 using Platform.API.OAuth;
 using Platform.API.Tests.Fakes;
@@ -130,9 +129,9 @@ public sealed class OAuthBearerTokenHandlerTests
     {
         var tokenProvider = new FakeTokenProvider(storedToken);
         var oAuth = oAuthClient ?? Mock.Of<IYouVersionOAuthClient>();
-        var apiOptions = Options.Create(new YouVersionApiOptions
+        var apiOptions = Options.Create(new YouVersionOAuthOptions
         {
-            AppKey = "test-key",
+            ClientId = "test-client",
             OAuthTokenExpiryBufferSeconds = 60
         });
 

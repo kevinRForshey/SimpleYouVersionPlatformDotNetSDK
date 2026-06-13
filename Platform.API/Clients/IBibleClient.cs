@@ -49,4 +49,12 @@ public interface IBibleClient
     /// A read-only list of <see cref="Book"/> records derived from the version metadata.
     /// </returns>
     Task<IReadOnlyList<Book>> GetBooksAsync(int versionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the books available in a given Bible version without making an additional HTTP request.
+    /// Use this overload when you already have a <see cref="BibleVersion"/> from a prior call.
+    /// </summary>
+    /// <param name="version">The already-fetched <see cref="BibleVersion"/> instance.</param>
+    /// <returns>A read-only list of <see cref="Book"/> records derived from the version metadata.</returns>
+    Task<IReadOnlyList<Book>> GetBooksAsync(BibleVersion version);
 }

@@ -41,7 +41,10 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configureOptions);
 
-        services.Configure(configureOptions);
+        services.AddOptions<YouVersionApiOptions>()
+            .Configure(configureOptions)
+            .ValidateOnStart();
+
         services.AddTransient<AppKeyDelegatingHandler>();
 
         RegisterTypedClient<IBibleClient, BibleClient>(services);
@@ -74,8 +77,9 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        services.Configure<YouVersionApiOptions>(
-            configuration.GetSection(YouVersionApiOptions.SectionName));
+        services.AddOptions<YouVersionApiOptions>()
+            .Bind(configuration.GetSection(YouVersionApiOptions.SectionName))
+            .ValidateOnStart();
 
         services.AddTransient<AppKeyDelegatingHandler>();
 
@@ -110,20 +114,26 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configureOptions);
 
-        services.Configure(configureOptions);
+        services.AddOptions<YouVersionOAuthOptions>()
+            .Configure(configureOptions)
+            .ValidateOnStart();
 
-        // Default in-memory token provider; consumers can replace with their own
+        // Default in-memory token provider
         // by registering ITokenProvider BEFORE calling AddYouVersionOAuth.
         services.TryAddSingleton<ITokenProvider, InMemoryTokenProvider>();
 
         services.AddTransient<OAuthBearerTokenHandler>();
 
-        // OAuth HTTP client (plain — no app key or bearer required on auth endpoints)
-        services.AddHttpClient<IYouVersionOAuthClient, YouVersionOAuthClient>((sp, http) =>
-        {
-            var opts = sp.GetRequiredService<IOptions<YouVersionOAuthOptions>>().Value;
-            http.BaseAddress = opts.TokenEndpoint;
-        });
+        // OAuth HTTP client — no app key or bearer required on auth endpoints.
+        // BaseAddress is intentionally not set; PostTokenRequestAsync uses the absolute
+        // TokenEndpoint URI from YouVersionOAuthOptions directly.
+        services.AddHttpClient<IYouVersionOAuthClient, YouVersionOAuthClient>();
+
+        // Append OAuthBearerTokenHandler to IHighlightClient's existing pipeline
+        // (AppKeyDelegatingHandler was already added by AddYouVersionApiClients).
+        // AddYouVersionApiClients MUST be called first.
+        services.AddHttpClient(typeof(IHighlightClient).Name)
+            .AddHttpMessageHandler<OAuthBearerTokenHandler>();
 
         return services;
     }

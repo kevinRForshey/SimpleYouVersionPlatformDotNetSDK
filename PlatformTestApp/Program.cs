@@ -108,10 +108,10 @@ app.MapRazorComponents<App>()
 app.MapGet("/auth/login", (IYouVersionOAuthClient oauthClient, HttpContext ctx) =>
 {
     var state = Base64Url(RandomNumberGenerator.GetBytes(16));
-    var url = oauthClient.BuildAuthorizationUrl(out var pkce, state);
-    ctx.Session.SetString("pkce_verifier", pkce.CodeVerifier);
+    var authRequest = oauthClient.BuildAuthorizationUrl(state);
+    ctx.Session.SetString("pkce_verifier", authRequest.Pkce.CodeVerifier);
     ctx.Session.SetString("oauth_state", state);
-    return Results.Redirect(url.ToString());
+    return Results.Redirect(authRequest.AuthorizationUrl.ToString());
 });
 
 app.MapGet("/auth/logout", async (IYouVersionOAuthClient oauthClient, HttpContext ctx) =>

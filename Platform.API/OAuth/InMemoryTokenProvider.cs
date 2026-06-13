@@ -9,28 +9,58 @@ namespace Platform.API.OAuth;
 /// </summary>
 /// <remarks>
 /// Tokens are stored in a private field and lost when the process exits.
+/// This implementation is thread-safe; concurrent reads and writes are serialised
+/// via a <see cref="SemaphoreSlim"/>.
 /// Use a custom <see cref="ITokenProvider"/> implementation for scenarios that require
 /// durable token storage (mobile, web, or desktop applications).
 /// </remarks>
-public sealed class InMemoryTokenProvider : ITokenProvider
+public sealed class InMemoryTokenProvider : ITokenProvider, IDisposable
 {
+    private readonly SemaphoreSlim _lock = new(1, 1);
     private OAuthTokenResponse? _token;
 
     /// <inheritdoc />
-    public Task<OAuthTokenResponse?> GetTokenAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(_token);
-
-    /// <inheritdoc />
-    public Task StoreTokenAsync(OAuthTokenResponse token, CancellationToken cancellationToken = default)
+    public async Task<OAuthTokenResponse?> GetTokenAsync(CancellationToken cancellationToken = default)
     {
-        _token = token;
-        return Task.CompletedTask;
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return _token;
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     /// <inheritdoc />
-    public Task ClearTokenAsync(CancellationToken cancellationToken = default)
+    public async Task StoreTokenAsync(OAuthTokenResponse token, CancellationToken cancellationToken = default)
     {
-        _token = null;
-        return Task.CompletedTask;
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _token = token;
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
+
+    /// <inheritdoc />
+    public async Task ClearTokenAsync(CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _token = null;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose() => _lock.Dispose();
 }

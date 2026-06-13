@@ -1,5 +1,3 @@
-using Platform.API.Clients;
-
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,7 +13,7 @@ namespace Platform.API.OAuth;
 ///   <item><description>Call <see cref="BuildAuthorizationUrl"/> to get the URL to redirect the user to.</description></item>
 ///   <item><description>The user authenticates and is redirected back with a <c>code</c> query parameter.</description></item>
 ///   <item><description>Call <see cref="ExchangeCodeAsync"/> with that code. The resulting token is automatically stored via <see cref="ITokenProvider"/>.</description></item>
-///   <item><description>Subsequent API calls with <see cref="Clients.IHighlightClient"/> are now authorized automatically.</description></item>
+///   <item><description>Subsequent API calls with <c>IHighlightClient</c> are now authorized automatically.</description></item>
 ///   <item><description>Call <see cref="RefreshTokenAsync"/> proactively, or rely on <c>OAuthBearerTokenHandler</c> to refresh transparently.</description></item>
 ///   <item><description>Call <see cref="SignOutAsync"/> to clear the stored token on sign-out.</description></item>
 /// </list>
@@ -23,19 +21,17 @@ namespace Platform.API.OAuth;
 public interface IYouVersionOAuthClient
 {
     /// <summary>
-    /// Builds the authorization URL to redirect the user to for sign-in.
+    /// Builds the authorization URL and PKCE values needed to start the sign-in flow.
     /// </summary>
-    /// <param name="pkce">
-    /// Output: the generated <see cref="PkceValues"/> containing the code verifier
-    /// and challenge. Store <see cref="PkceValues.CodeVerifier"/> securely (e.g., session state)
-    /// for use in <see cref="ExchangeCodeAsync"/>.
-    /// </param>
     /// <param name="state">
     /// Optional opaque state string for CSRF protection. If omitted, a random value is generated.
     /// Verify this value matches the <c>state</c> parameter on the callback.
     /// </param>
-    /// <returns>The fully-formed authorization URL to redirect the user to.</returns>
-    Uri BuildAuthorizationUrl(out PkceValues pkce, string? state = null);
+    /// <returns>
+    /// An <see cref="AuthorizationRequest"/> containing the URL to redirect the user to
+    /// and the <see cref="PkceValues"/> to store server-side for the token exchange step.
+    /// </returns>
+    AuthorizationRequest BuildAuthorizationUrl(string? state = null);
 
     /// <summary>
     /// Exchanges an authorization code for access and refresh tokens.

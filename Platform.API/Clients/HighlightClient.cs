@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 
 using Platform.API.Exceptions;
+using Platform.API.Http;
 using Platform.API.Models;
 
 using System.Net.Http.Json;
@@ -9,15 +10,15 @@ namespace Platform.API.Clients;
 
 /// <summary>
 /// HTTP implementation of <see cref="IHighlightClient"/>.
-/// Requires an OAuth access token delivered by <see cref="Platform.API.Http.OAuthBearerTokenHandler"/>.
+/// Read operations require only an app key; write operations require an OAuth access token
+/// delivered by <see cref="Platform.API.Http.OAuthBearerTokenHandler"/>.
 /// </summary>
 /// <remarks>
-/// Register via <see cref="Platform.API.Extensions.ServiceCollectionExtensions.AddYouVersionOAuth"/>
-/// to enable bearer token injection automatically.
+/// Call <see cref="Platform.API.Extensions.ServiceCollectionExtensions.AddYouVersionOAuth"/> after
+/// <c>AddYouVersionApiClients</c> to enable automatic bearer-token injection for write operations.
 /// </remarks>
 internal sealed partial class HighlightClient : IHighlightClient
 {
-    // TODO: Confirm the exact highlight endpoint path with https://developers.youversion.com
     private const string HighlightsPath = "/v1/highlights";
 
     private readonly HttpClient _httpClient;
@@ -40,11 +41,7 @@ internal sealed partial class HighlightClient : IHighlightClient
 
         _logger.LogDebug("Fetching highlights (pageToken={PageToken}).", pageToken);
 
-        using var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
-        await EnsureSuccessAsync(response, url, cancellationToken).ConfigureAwait(false);
-
-        var result = await response.Content
-            .ReadFromJsonAsync<PagedResult<Highlight>>(cancellationToken: cancellationToken)
+        var result = await ApiRequestHelper.GetJsonAsync<PagedResult<Highlight>>(_httpClient, url, _logger, cancellationToken)
             .ConfigureAwait(false);
 
         var list = result ?? new PagedResult<Highlight>();
@@ -61,10 +58,15 @@ internal sealed partial class HighlightClient : IHighlightClient
     {
         _logger.LogDebug("Creating highlight for {Usfm} in version {VersionId} with color {Color}.", usfm, versionId, color);
 
-        var payload = new { version_id = versionId, usfm, color = color.ToString().ToLowerInvariant() };
+        var payload = new CreateHighlightRequest
+        {
+            VersionId = versionId,
+            Usfm = usfm,
+            Color = color.ToString().ToLowerInvariant()
+        };
         using var content = JsonContent.Create(payload);
         using var response = await _httpClient.PostAsync(HighlightsPath, content, cancellationToken).ConfigureAwait(false);
-        await EnsureSuccessAsync(response, HighlightsPath, cancellationToken).ConfigureAwait(false);
+        await ApiRequestHelper.EnsureSuccessAsync(response, HighlightsPath, _logger, cancellationToken).ConfigureAwait(false);
 
         var highlight = await response.Content
             .ReadFromJsonAsync<Highlight>(cancellationToken: cancellationToken)
@@ -85,25 +87,8 @@ internal sealed partial class HighlightClient : IHighlightClient
         _logger.LogDebug("Deleting highlight {HighlightId}.", highlightId);
 
         using var response = await _httpClient.DeleteAsync(url, cancellationToken).ConfigureAwait(false);
-        await EnsureSuccessAsync(response, url, cancellationToken).ConfigureAwait(false);
+        await ApiRequestHelper.EnsureSuccessAsync(response, url, _logger, cancellationToken).ConfigureAwait(false);
 
         _logger.LogDebug("Deleted highlight {HighlightId}.", highlightId);
-    }
-
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
-    private async Task EnsureSuccessAsync(HttpResponseMessage response, string url, CancellationToken ct)
-    {
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            _logger.LogError("Highlight API request to '{Url}' failed with HTTP {StatusCode} {ReasonPhrase}.", url, (int)response.StatusCode, response.ReasonPhrase);
-            throw new YouVersionApiException(
-                response.StatusCode,
-                $"Highlight API request to '{url}' failed with status {(int)response.StatusCode} ({response.ReasonPhrase}).",
-                body);
-        }
     }
 }

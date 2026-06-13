@@ -1,6 +1,4 @@
 using System;
-using System.Text;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Platform.API.OAuth;
@@ -35,6 +33,12 @@ public sealed record OAuthTokenResponse
     /// The UTC time at which this response was received.
     /// Used to calculate whether the token has expired.
     /// </summary>
+    /// <remarks>
+    /// This property is excluded from JSON serialization. If you persist the token
+    /// (e.g. in a cache or on disk), you must separately store and restore
+    /// <see cref="ReceivedAt"/>; otherwise it resets to the current time on
+    /// deserialization, making a near-expired token appear fresh.
+    /// </remarks>
     [JsonIgnore]
     public DateTimeOffset ReceivedAt { get; init; } = DateTimeOffset.UtcNow;
 
@@ -50,7 +54,7 @@ public sealed record OAuthTokenResponse
         if (ExpiresIn > 0)
             return DateTimeOffset.UtcNow >= ReceivedAt.AddSeconds(ExpiresIn - bufferSeconds);
 
-        var exp = GetUnixTimeClaimFromJwt(IdToken, "exp") ?? GetUnixTimeClaimFromJwt(AccessToken, "exp");
+        var exp = JwtHelper.GetLongClaim(IdToken, "exp") ?? JwtHelper.GetLongClaim(AccessToken, "exp");
         if (exp is long unixSeconds)
             return DateTimeOffset.UtcNow >= DateTimeOffset.FromUnixTimeSeconds(unixSeconds).AddSeconds(-bufferSeconds);
 
@@ -63,27 +67,27 @@ public sealed record OAuthTokenResponse
     /// specified claim, or <see langword="null"/> if the token is absent or the claim
     /// is not present.
     /// </summary>
-    public string? GetClaim(string claimName) => GetClaimFromJwt(IdToken, claimName);
+    public string? GetClaim(string claimName) => JwtHelper.GetStringClaim(IdToken, claimName);
 
     /// <summary>
     /// Returns the user's display name by searching common OIDC claim names
     /// in the ID token first, then the access token.
     /// </summary>
     public string? GetUserName() =>
-        GetClaimFromJwt(IdToken, "name") ??
-        GetClaimFromJwt(IdToken, "preferred_username") ??
-        GetClaimFromJwt(AccessToken, "name") ??
-        GetClaimFromJwt(AccessToken, "preferred_username");
+        JwtHelper.GetStringClaim(IdToken, "name") ??
+        JwtHelper.GetStringClaim(IdToken, "preferred_username") ??
+        JwtHelper.GetStringClaim(AccessToken, "name") ??
+        JwtHelper.GetStringClaim(AccessToken, "preferred_username");
 
     /// <summary>
     /// Returns the user's email address by searching common claim names
     /// in the ID token first, then the access token.
     /// </summary>
     public string? GetEmail() =>
-        GetClaimFromJwt(IdToken, "email") ??
-        GetClaimFromJwt(IdToken, "upn") ??
-        GetClaimFromJwt(AccessToken, "email") ??
-        GetClaimFromJwt(AccessToken, "upn");
+        JwtHelper.GetStringClaim(IdToken, "email") ??
+        JwtHelper.GetStringClaim(IdToken, "upn") ??
+        JwtHelper.GetStringClaim(AccessToken, "email") ??
+        JwtHelper.GetStringClaim(AccessToken, "upn");
 
     /// <summary>
     /// Returns the best available user identifier for display in the UI.
@@ -92,62 +96,6 @@ public sealed record OAuthTokenResponse
     public string? GetDisplayIdentity() =>
         GetUserName() ??
         GetEmail() ??
-        GetClaimFromJwt(IdToken, "sub") ??
-        GetClaimFromJwt(AccessToken, "sub");
-
-    /// <summary>
-    /// Decodes the Base64Url-encoded payload of <paramref name="jwt"/> and returns
-    /// the string value of <paramref name="claimName"/>, or <see langword="null"/>
-    /// if the JWT is absent, malformed, or the claim is not present.
-    /// </summary>
-    private static string? GetClaimFromJwt(string? jwt, string claimName)
-    {
-        if (string.IsNullOrEmpty(jwt)) return null;
-        var parts = jwt.Split('.');
-        if (parts.Length < 2) return null;
-
-        var padded = parts[1].Replace('-', '+').Replace('_', '/');
-        padded += new string('=', (4 - padded.Length % 4) % 4);
-
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
-            using var doc = JsonDocument.Parse(json);
-            return doc.RootElement.TryGetProperty(claimName, out var val) ? val.GetString() : null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static long? GetUnixTimeClaimFromJwt(string? jwt, string claimName)
-    {
-        if (string.IsNullOrEmpty(jwt)) return null;
-        var parts = jwt.Split('.');
-        if (parts.Length < 2) return null;
-
-        var padded = parts[1].Replace('-', '+').Replace('_', '/');
-        padded += new string('=', (4 - padded.Length % 4) % 4);
-
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
-            using var doc = JsonDocument.Parse(json);
-
-            if (!doc.RootElement.TryGetProperty(claimName, out var val))
-                return null;
-
-            return val.ValueKind switch
-            {
-                JsonValueKind.Number when val.TryGetInt64(out var n) => n,
-                JsonValueKind.String when long.TryParse(val.GetString(), out var n) => n,
-                _ => null
-            };
-        }
-        catch
-        {
-            return null;
-        }
-    }
+        JwtHelper.GetStringClaim(IdToken, "sub") ??
+        JwtHelper.GetStringClaim(AccessToken, "sub");
 }

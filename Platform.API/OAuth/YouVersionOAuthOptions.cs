@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace Platform.API.OAuth;
 
@@ -14,6 +15,7 @@ public sealed class YouVersionOAuthOptions
     /// <summary>
     /// The OAuth 2.0 client identifier registered in the YouVersion developer portal.
     /// </summary>
+    [Required]
     public string ClientId { get; set; } = string.Empty;
 
     /// <summary>
@@ -46,4 +48,11 @@ public sealed class YouVersionOAuthOptions
     /// require an OAuth token or scope.
     /// </summary>
     public string Scopes { get; set; } = "passages highlights";
+
+    /// <summary>
+    /// How many seconds before a token's actual expiry to proactively refresh it inside
+    /// <see cref="Platform.API.Http.OAuthBearerTokenHandler"/>.
+    /// Defaults to 60 seconds.
+    /// </summary>
+    public int OAuthTokenExpiryBufferSeconds { get; set; } = 60;
 }

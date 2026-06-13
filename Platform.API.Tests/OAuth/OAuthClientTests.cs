@@ -29,13 +29,13 @@ public sealed class OAuthClientTests
     {
         var client = BuildClient(HttpStatusCode.OK, TokenJson);
 
-        var url = client.BuildAuthorizationUrl(out _);
+        var authRequest = client.BuildAuthorizationUrl();
 
-        url.AbsoluteUri.Should().Contain("response_type=code");
-        url.AbsoluteUri.Should().Contain("client_id=test-client");
-        url.AbsoluteUri.Should().Contain("code_challenge_method%3DS256"   // encoded
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("response_type=code");
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("client_id=test-client");
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("code_challenge_method%3DS256"   // encoded
             .Replace("%3D", "="));
-        url.AbsoluteUri.Should().Contain("redirect_uri=");
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("redirect_uri=");
     }
 
     [Fact]
@@ -43,11 +43,11 @@ public sealed class OAuthClientTests
     {
         var client = BuildClient(HttpStatusCode.OK, TokenJson);
 
-        client.BuildAuthorizationUrl(out var pkce);
+        var authRequest = client.BuildAuthorizationUrl();
 
-        pkce.CodeVerifier.Should().NotBeNullOrEmpty();
-        pkce.CodeChallenge.Should().NotBeNullOrEmpty();
-        pkce.CodeChallengeMethod.Should().Be("S256");
+        authRequest.Pkce.CodeVerifier.Should().NotBeNullOrEmpty();
+        authRequest.Pkce.CodeChallenge.Should().NotBeNullOrEmpty();
+        authRequest.Pkce.CodeChallengeMethod.Should().Be("S256");
     }
 
     [Fact]
@@ -55,11 +55,11 @@ public sealed class OAuthClientTests
     {
         var client = BuildClient(HttpStatusCode.OK, TokenJson);
 
-        client.BuildAuthorizationUrl(out var pkce1);
-        client.BuildAuthorizationUrl(out var pkce2);
+        var req1 = client.BuildAuthorizationUrl();
+        var req2 = client.BuildAuthorizationUrl();
 
-        pkce1.CodeVerifier.Should().NotBe(pkce2.CodeVerifier);
-        pkce1.CodeChallenge.Should().NotBe(pkce2.CodeChallenge);
+        req1.Pkce.CodeVerifier.Should().NotBe(req2.Pkce.CodeVerifier);
+        req1.Pkce.CodeChallenge.Should().NotBe(req2.Pkce.CodeChallenge);
     }
 
     [Fact]
@@ -67,9 +67,9 @@ public sealed class OAuthClientTests
     {
         var client = BuildClient(HttpStatusCode.OK, TokenJson);
 
-        var url = client.BuildAuthorizationUrl(out _, state: "csrf-token-123");
+        var authRequest = client.BuildAuthorizationUrl(state: "csrf-token-123");
 
-        url.AbsoluteUri.Should().Contain("state=csrf-token-123");
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("state=csrf-token-123");
     }
 
     [Fact]
@@ -77,9 +77,9 @@ public sealed class OAuthClientTests
     {
         var client = BuildClient(HttpStatusCode.OK, TokenJson);
 
-        var url = client.BuildAuthorizationUrl(out _);
+        var authRequest = client.BuildAuthorizationUrl();
 
-        url.AbsoluteUri.Should().Contain("state=");
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("state=");
     }
 
     // -------------------------------------------------------------------------
