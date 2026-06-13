@@ -2,7 +2,7 @@ using Platform.API.Models;
 
 namespace PlatformTestApp.Services;
 
-public class BibleReaderStateService : IBibleReaderStateService
+public sealed class BibleReaderStateService : IBibleReaderStateService
 {
     public BibleVersionSummary? SelectedVersion { get; private set; }
     public Book? SelectedBook { get; private set; }

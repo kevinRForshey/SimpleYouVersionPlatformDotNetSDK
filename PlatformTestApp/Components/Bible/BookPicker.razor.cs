@@ -17,14 +17,12 @@ namespace PlatformTestApp.Components.Bible
         protected override async Task OnParametersSetAsync()
             => await LoadBooksIfNeededAsync();
 
-        private async void OnStateChangedHandler()
-        {
-            await InvokeAsync(async () =>
+        private void OnStateChangedHandler()
+            => InvokeAsync(async () =>
             {
                 await LoadBooksIfNeededAsync();
                 StateHasChanged();
             });
-        }
 
         private async Task LoadBooksIfNeededAsync()
         {

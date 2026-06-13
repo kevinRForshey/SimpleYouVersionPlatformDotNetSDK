@@ -33,5 +33,4 @@ public sealed class YouVersionApiOptions
     /// HTTP request timeout. Defaults to 30 seconds.
     /// </summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
-
-    }
+}

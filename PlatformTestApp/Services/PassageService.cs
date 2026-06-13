@@ -3,14 +3,12 @@ using Platform.API.Models;
 
 namespace PlatformTestApp.Services;
 
-public class PassageService(IPassageClient client)
+public sealed class PassageService(IPassageClient client)
 {
-    public async Task<Passage> GetPassageAsync(
+    public Task<Passage> GetPassageAsync(
         int versionId,
         string usfm,
         PassageRequestOptions? options = null,
         CancellationToken cancellationToken = default)
-    {
-        return await client.GetPassageAsync(versionId, usfm, options, cancellationToken);
-    }
+        => client.GetPassageAsync(versionId, usfm, options, cancellationToken);
 }

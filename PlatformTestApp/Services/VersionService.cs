@@ -3,7 +3,7 @@ using Platform.API.Models;
 
 namespace PlatformTestApp.Services;
 
-public class VersionService(IBibleClient client) : IVersionService
+public sealed class VersionService(IBibleClient client) : IVersionService
 {
     public async Task<IReadOnlyList<BibleVersionSummary>> GetVersionsAsync(
         string languageRange = "en",

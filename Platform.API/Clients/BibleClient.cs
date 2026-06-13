@@ -98,5 +98,4 @@ internal sealed class BibleClient : IBibleClient
 
         return sb.ToString();
     }
-
-    }
+}
