@@ -17,18 +17,9 @@ namespace Platform.API.Clients;
 /// Call <see cref="Platform.API.Extensions.ServiceCollectionExtensions.AddYouVersionOAuth"/> after
 /// <c>AddYouVersionApiClients</c> to enable automatic bearer-token injection for write operations.
 /// </remarks>
-internal sealed partial class HighlightClient : IHighlightClient
+internal sealed partial class HighlightClient(HttpClient httpClient, ILogger<HighlightClient> logger) : IHighlightClient
 {
     private const string HighlightsPath = "/v1/highlights";
-
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<HighlightClient> _logger;
-
-    public HighlightClient(HttpClient httpClient, ILogger<HighlightClient> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
 
     /// <inheritdoc />
     public async Task<PagedResult<Highlight>> GetHighlightsAsync(
@@ -39,13 +30,13 @@ internal sealed partial class HighlightClient : IHighlightClient
             ? $"{HighlightsPath}?page_token={System.Uri.EscapeDataString(pageToken)}"
             : HighlightsPath;
 
-        _logger.LogDebug("Fetching highlights (pageToken={PageToken}).", pageToken);
+        logger.LogDebug("Fetching highlights (pageToken={PageToken}).", pageToken);
 
-        var result = await ApiRequestHelper.GetJsonAsync<PagedResult<Highlight>>(_httpClient, url, _logger, cancellationToken)
+        var result = await ApiRequestHelper.GetJsonAsync<PagedResult<Highlight>>(httpClient, url, logger, cancellationToken)
             .ConfigureAwait(false);
 
         var list = result ?? new PagedResult<Highlight>();
-        _logger.LogDebug("Fetched {Count} highlight(s).", list.Data.Count);
+        logger.LogDebug("Fetched {Count} highlight(s).", list.Data.Count);
         return list;
     }
 
@@ -56,7 +47,7 @@ internal sealed partial class HighlightClient : IHighlightClient
         HighlightColor color,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Creating highlight for {Usfm} in version {VersionId} with color {Color}.", usfm, versionId, color);
+        logger.LogDebug("Creating highlight for {Usfm} in version {VersionId} with color {Color}.", usfm, versionId, color);
 
         var payload = new CreateHighlightRequest
         {
@@ -65,8 +56,8 @@ internal sealed partial class HighlightClient : IHighlightClient
             Color = color.ToString().ToLowerInvariant()
         };
         using var content = JsonContent.Create(payload);
-        using var response = await _httpClient.PostAsync(HighlightsPath, content, cancellationToken).ConfigureAwait(false);
-        await ApiRequestHelper.EnsureSuccessAsync(response, HighlightsPath, _logger, cancellationToken).ConfigureAwait(false);
+        using var response = await httpClient.PostAsync(HighlightsPath, content, cancellationToken).ConfigureAwait(false);
+        await ApiRequestHelper.EnsureSuccessAsync(response, HighlightsPath, logger, cancellationToken).ConfigureAwait(false);
 
         var highlight = await response.Content
             .ReadFromJsonAsync<Highlight>(cancellationToken: cancellationToken)
@@ -76,7 +67,7 @@ internal sealed partial class HighlightClient : IHighlightClient
             System.Net.HttpStatusCode.OK,
             $"Create highlight for '{usfm}' returned an empty response body.");
 
-        _logger.LogDebug("Created highlight {HighlightId} for {Usfm}.", result.Id, usfm);
+        logger.LogDebug("Created highlight {HighlightId} for {Usfm}.", result.Id, usfm);
         return result;
     }
 
@@ -84,11 +75,11 @@ internal sealed partial class HighlightClient : IHighlightClient
     public async Task DeleteHighlightAsync(string highlightId, CancellationToken cancellationToken = default)
     {
         var url = $"{HighlightsPath}/{System.Uri.EscapeDataString(highlightId)}";
-        _logger.LogDebug("Deleting highlight {HighlightId}.", highlightId);
+        logger.LogDebug("Deleting highlight {HighlightId}.", highlightId);
 
-        using var response = await _httpClient.DeleteAsync(url, cancellationToken).ConfigureAwait(false);
-        await ApiRequestHelper.EnsureSuccessAsync(response, url, _logger, cancellationToken).ConfigureAwait(false);
+        using var response = await httpClient.DeleteAsync(url, cancellationToken).ConfigureAwait(false);
+        await ApiRequestHelper.EnsureSuccessAsync(response, url, logger, cancellationToken).ConfigureAwait(false);
 
-        _logger.LogDebug("Deleted highlight {HighlightId}.", highlightId);
+        logger.LogDebug("Deleted highlight {HighlightId}.", highlightId);
     }
 }

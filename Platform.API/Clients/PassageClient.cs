@@ -9,16 +9,8 @@ namespace Platform.API.Clients;
 /// <summary>
 /// Default implementation of <see cref="IPassageClient"/> backed by the YouVersion Platform REST API.
 /// </summary>
-internal sealed partial class PassageClient : IPassageClient
+internal sealed partial class PassageClient(HttpClient httpClient, ILogger<PassageClient> logger) : IPassageClient
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<PassageClient> _logger;
-
-    public PassageClient(HttpClient httpClient, ILogger<PassageClient> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
 
     /// <inheritdoc />
     public async Task<Passage> GetPassageAsync(
@@ -30,16 +22,16 @@ internal sealed partial class PassageClient : IPassageClient
         var resolvedOptions = options ?? PassageRequestOptions.Default;
         var url = BuildPassageUrl(versionId, usfm, resolvedOptions);
 
-        _logger.LogDebug("Fetching passage {Usfm} from version {VersionId} (format={Format}).", usfm, versionId, resolvedOptions.Format);
+        logger.LogDebug("Fetching passage {Usfm} from version {VersionId} (format={Format}).", usfm, versionId, resolvedOptions.Format);
 
-        var passage = await ApiRequestHelper.GetJsonAsync<Passage>(_httpClient, url, _logger, cancellationToken)
+        var passage = await ApiRequestHelper.GetJsonAsync<Passage>(httpClient, url, logger, cancellationToken)
             .ConfigureAwait(false);
 
         var result = passage ?? throw new YouVersionApiException(
             System.Net.HttpStatusCode.OK,
             $"The API returned an empty body for passage '{usfm}' (version {versionId}).");
 
-        _logger.LogDebug("Fetched passage {Usfm} from version {VersionId}.", usfm, versionId);
+        logger.LogDebug("Fetched passage {Usfm} from version {VersionId}.", usfm, versionId);
         return result;
     }
 
