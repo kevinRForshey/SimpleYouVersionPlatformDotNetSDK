@@ -1,18 +1,23 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
+using Microsoft.FluentUI.AspNetCore.Components;
 
 using Platform.API.Extensions;
 using Platform.API.OAuth;
+using Platform.SDK.Services;
 
 using PlatformTestApp.Components;
-using PlatformTestApp.Services;
+
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddHttpClient();
+builder.Services.AddFluentUIComponents();
 
 builder.Services.AddYouVersionApiClients(builder.Configuration);
 builder.Services.AddYouVersionOAuth(o =>
@@ -59,7 +64,7 @@ app.Use(async (ctx, next) =>
 {
     if (ctx.Request.Path == "/" && ctx.Request.Query.ContainsKey("code"))
     {
-        ctx.Session.SetString("oauth_code",         ctx.Request.Query["code"].ToString());
+        ctx.Session.SetString("oauth_code", ctx.Request.Query["code"].ToString());
         ctx.Session.SetString("oauth_state_return", ctx.Request.Query["state"].ToString());
         ctx.Response.Redirect("/auth/callback-complete");
         return;
@@ -125,7 +130,7 @@ app.MapGet("/auth/logout", async (IYouVersionOAuthClient oauthClient, HttpContex
 // Minimal API endpoints have a real HttpContext and reliable session access — Blazor components don't.
 app.MapGet("/auth/callback-complete", async (IYouVersionOAuthClient oauthClient, HttpContext ctx) =>
 {
-    var code     = ctx.Session.GetString("oauth_code");
+    var code = ctx.Session.GetString("oauth_code");
     var retState = ctx.Session.GetString("oauth_state_return");
     var verifier = ctx.Session.GetString("pkce_verifier");
     var expected = ctx.Session.GetString("oauth_state");

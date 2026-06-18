@@ -1,3 +1,4 @@
+﻿@using Platform.SDK.Services
 @inject PassageService PassageService
 @inject IBibleReaderStateService State
 @implements IDisposable
@@ -31,5 +32,5 @@ else if (State.SelectedChapter is not null && State.SelectedVerseStart is not nu
 }
 
 @code {
-   
+
 }

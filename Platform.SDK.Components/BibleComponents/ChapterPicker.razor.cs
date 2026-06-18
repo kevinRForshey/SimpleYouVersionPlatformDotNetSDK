@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Components;
 
-namespace PlatformTestApp.Components.Bible
+namespace Platform.SDK.Components.BibleComponents
 {
     public partial class ChapterPicker
     {

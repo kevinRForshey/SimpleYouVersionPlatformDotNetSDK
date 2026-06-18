@@ -1,4 +1,6 @@
 ﻿@page "/"
+@using Platform.SDK.Components.BibleComponents
+@using Platform.SDK.Services;
 @rendermode InteractiveServer
 @inject ITokenProvider TokenProvider
 @inject IBibleReaderStateService State
@@ -25,11 +27,11 @@
                 <span class="me-3 text-muted small">
                     You are logged in as: <strong>@(_userName ?? "YouVersion User")</strong>
                 </span>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="SignOut">Sign out</button>
+                <FluentButton Appearance="Appearance.Accent" @onclick="SignOut">Sign out</FluentButton>
             }
             else
             {
-                <button class="btn btn-sm btn-primary" @onclick="SignIn">Sign in with YouVersion</button>
+                <FluentButton Appearance="Appearance.Lightweight" @onclick="SignIn">Sign in with YouVersion</FluentButton>
             }
         </div>
     </div>

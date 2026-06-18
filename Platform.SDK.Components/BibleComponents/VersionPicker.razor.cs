@@ -2,7 +2,7 @@
 
 using Platform.API.Models;
 
-namespace PlatformTestApp.Components.Bible
+namespace Platform.SDK.Components.BibleComponents
 {
     public partial class VersionPicker
     {
