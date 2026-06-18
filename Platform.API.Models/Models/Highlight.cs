@@ -8,29 +8,33 @@ namespace Platform.API.Models;
 /// </summary>
 public sealed record Highlight
 {
-    /// <summary>Unique identifier for the highlight.</summary>
+    /// <summary>Gets the unique identifier for this highlight.</summary>
+    /// <value>The unique highlight identifier.</value>
     [JsonPropertyName("id")]
     public string Id { get; init; } = string.Empty;
 
-    /// <summary>
-    /// USFM identifier of the highlighted verse (e.g. <c>JHN.3.16</c>).
-    /// </summary>
+    /// <summary>Gets the USFM identifier of the highlighted verse (e.g. <c>JHN.3.16</c>).</summary>
+    /// <value>The USFM identifier for the highlighted verse.</value>
     [JsonPropertyName("usfm")]
     public string Usfm { get; init; } = string.Empty;
 
-    /// <summary>The Bible version id this highlight belongs to.</summary>
+    /// <summary>Gets the Bible version identifier this highlight belongs to.</summary>
+    /// <value>The numeric Bible version identifier.</value>
     [JsonPropertyName("version_id")]
     public int VersionId { get; init; }
 
-    /// <summary>The color used for this highlight.</summary>
+    /// <summary>Gets the color used for this highlight.</summary>
+    /// <value>One of the <see cref="HighlightColor"/> values.</value>
     [JsonPropertyName("color")]
     public HighlightColor Color { get; init; }
 
-    /// <summary>UTC timestamp when the highlight was created.</summary>
+    /// <summary>Gets the UTC timestamp when the highlight was created.</summary>
+    /// <value>The UTC creation timestamp.</value>
     [JsonPropertyName("created_at")]
     public DateTimeOffset CreatedAt { get; init; }
 
-    /// <summary>UTC timestamp when the highlight was last updated.</summary>
+    /// <summary>Gets the UTC timestamp when the highlight was last updated.</summary>
+    /// <value>The UTC last-updated timestamp.</value>
     [JsonPropertyName("updated_at")]
     public DateTimeOffset UpdatedAt { get; init; }
 }

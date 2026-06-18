@@ -8,49 +8,60 @@ namespace Platform.API.Models;
 /// </summary>
 public sealed record BibleVersion
 {
-    /// <summary>Unique numeric identifier for the Bible version.</summary>
+    /// <summary>Gets the unique numeric identifier for this Bible version.</summary>
+    /// <value>The numeric identifier for this Bible version.</value>
     [JsonPropertyName("id")]
     public int Id { get; init; }
 
-    /// <summary>Short abbreviation for the version (e.g. <c>NIV</c>, <c>BSB</c>).</summary>
+    /// <summary>Gets the short abbreviation for the version (e.g. <c>NIV</c>, <c>BSB</c>).</summary>
+    /// <value>The short version abbreviation.</value>
     [JsonPropertyName("abbreviation")]
     public string Abbreviation { get; init; } = string.Empty;
 
-    /// <summary>Abbreviation localized to the version's language.</summary>
+    /// <summary>Gets the abbreviation localized to the version's language.</summary>
+    /// <value>The localized version abbreviation.</value>
     [JsonPropertyName("localized_abbreviation")]
     public string LocalizedAbbreviation { get; init; } = string.Empty;
 
-    /// <summary>Full title of the Bible version.</summary>
+    /// <summary>Gets the full title of the Bible version.</summary>
+    /// <value>The full title of the Bible version.</value>
     [JsonPropertyName("title")]
     public string Title { get; init; } = string.Empty;
 
-    /// <summary>Title localized to the version's language.</summary>
+    /// <summary>Gets the title localized to the version's language.</summary>
+    /// <value>The localized title of the Bible version.</value>
     [JsonPropertyName("localized_title")]
     public string LocalizedTitle { get; init; } = string.Empty;
 
-    /// <summary>BCP-47 language tag (e.g. <c>en</c>, <c>es</c>).</summary>
+    /// <summary>Gets the BCP-47 language tag (e.g. <c>en</c>, <c>es</c>).</summary>
+    /// <value>The BCP-47 language tag for this version.</value>
     [JsonPropertyName("language_tag")]
     public string LanguageTag { get; init; } = string.Empty;
 
-    /// <summary>Copyright statement to display alongside any Bible text from this version.</summary>
+    /// <summary>Gets the copyright statement to display alongside any Bible text from this version.</summary>
+    /// <value>The copyright statement for this Bible version.</value>
     [JsonPropertyName("copyright")]
     public string Copyright { get; init; } = string.Empty;
 
-    /// <summary>Short promotional description of the version.</summary>
+    /// <summary>Gets the short promotional description of the version.</summary>
+    /// <value>The promotional description, or <see langword="null"/> if none is available.</value>
     [JsonPropertyName("promotional_content")]
     public string? PromotionalContent { get; init; }
 
-    /// <summary>URL to the publisher's website, if available.</summary>
+    /// <summary>Gets the URL to the publisher's website.</summary>
+    /// <value>The publisher URL, or <see langword="null"/> if none is available.</value>
     [JsonPropertyName("publisher_url")]
     public string? PublisherUrl { get; init; }
 
     /// <summary>
-    /// USFM book codes available in this version (e.g. <c>GEN</c>, <c>JHN</c>).
+    /// Gets the USFM book codes available in this version (e.g. <c>GEN</c>, <c>JHN</c>).
     /// </summary>
+    /// <value>The list of USFM book codes available in this version.</value>
     [JsonPropertyName("books")]
     public IReadOnlyList<string> Books { get; init; } = [];
 
-    /// <summary>Deep link to this version on YouVersion (bible.com).</summary>
+    /// <summary>Gets the deep link to this version on YouVersion (bible.com).</summary>
+    /// <value>The YouVersion deep link URL, or <see langword="null"/> if none is available.</value>
     [JsonPropertyName("youversion_deep_link")]
     public string? YouVersionDeepLink { get; init; }
 }
