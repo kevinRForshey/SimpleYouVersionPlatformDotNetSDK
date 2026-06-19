@@ -1,0 +1,27 @@
+﻿@using Platform.SDK.Services
+@inject IBibleReaderStateService State
+@implements IDisposable
+
+<div class="bible-picker">
+    <label class="form-label fw-semibold" for="chapter-select">Chapter</label>
+    @if (State.SelectedBook is null)
+    {
+        <p class="text-muted small">Select a book first.</p>
+    }
+    else
+    {
+        <select id="chapter-select"
+                class="form-select"
+                value="@(State.SelectedChapter?.ToString() ?? "")"
+                @onchange="OnChapterChanged">
+            <option value="">— Select a chapter —</option>
+            @for (var i = 1; i <= State.SelectedBook.ChapterCount; i++)
+            {
+                var ch = i;
+                <option value="@ch">Chapter @ch</option>
+            }
+        </select>
+    }
+</div>
+
+

@@ -1,0 +1,359 @@
+using System;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Platform.API.Exceptions;
+using Platform.API.OAuth;
+using Platform.API.Tests.Fakes;
+using Xunit;
+
+namespace Platform.API.Tests.OAuth;
+
+public sealed class OAuthClientTests
+{
+    private const string TokenJson = """
+        { "access_token": "acc-tok", "refresh_token": "ref-tok",
+          "token_type": "Bearer", "expires_in": 3600 }
+        """;
+
+    // -------------------------------------------------------------------------
+    // BuildAuthorizationUrl
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void BuildAuthorizationUrl_ReturnsUri_WithExpectedQueryParameters()
+    {
+        var client = BuildClient(HttpStatusCode.OK, TokenJson);
+
+        var authRequest = client.BuildAuthorizationUrl();
+
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("response_type=code");
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("client_id=test-client");
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("code_challenge_method%3DS256"   // encoded
+            .Replace("%3D", "="));
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("redirect_uri=");
+    }
+
+    [Fact]
+    public void BuildAuthorizationUrl_GeneratesPkce_WithNonEmptyVerifierAndChallenge()
+    {
+        var client = BuildClient(HttpStatusCode.OK, TokenJson);
+
+        var authRequest = client.BuildAuthorizationUrl();
+
+        authRequest.Pkce.CodeVerifier.Should().NotBeNullOrEmpty();
+        authRequest.Pkce.CodeChallenge.Should().NotBeNullOrEmpty();
+        authRequest.Pkce.CodeChallengeMethod.Should().Be("S256");
+    }
+
+    [Fact]
+    public void BuildAuthorizationUrl_EachCallProducesUniquePkce()
+    {
+        var client = BuildClient(HttpStatusCode.OK, TokenJson);
+
+        var req1 = client.BuildAuthorizationUrl();
+        var req2 = client.BuildAuthorizationUrl();
+
+        req1.Pkce.CodeVerifier.Should().NotBe(req2.Pkce.CodeVerifier);
+        req1.Pkce.CodeChallenge.Should().NotBe(req2.Pkce.CodeChallenge);
+    }
+
+    [Fact]
+    public void BuildAuthorizationUrl_UsesProvidedState_InQueryString()
+    {
+        var client = BuildClient(HttpStatusCode.OK, TokenJson);
+
+        var authRequest = client.BuildAuthorizationUrl(state: "csrf-token-123");
+
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("state=csrf-token-123");
+    }
+
+    [Fact]
+    public void BuildAuthorizationUrl_GeneratesState_WhenNotProvided()
+    {
+        var client = BuildClient(HttpStatusCode.OK, TokenJson);
+
+        var authRequest = client.BuildAuthorizationUrl();
+
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("state=");
+    }
+
+    // -------------------------------------------------------------------------
+    // ExchangeCodeAsync
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ExchangeCodeAsync_ReturnsToken_WhenApiSucceeds()
+    {
+        var tokenProvider = new FakeTokenProvider();
+        var client = BuildClient(HttpStatusCode.OK, TokenJson, tokenProvider);
+
+        var token = await client.ExchangeCodeAsync("auth-code", "verifier");
+
+        token.AccessToken.Should().Be("acc-tok");
+        token.RefreshToken.Should().Be("ref-tok");
+        token.ExpiresIn.Should().Be(3600);
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_StoresTokenInProvider_AfterSuccess()
+    {
+        var tokenProvider = new FakeTokenProvider();
+        var client = BuildClient(HttpStatusCode.OK, TokenJson, tokenProvider);
+
+        await client.ExchangeCodeAsync("auth-code", "verifier");
+
+        var stored = await tokenProvider.GetTokenAsync();
+        stored.Should().NotBeNull();
+        stored!.AccessToken.Should().Be("acc-tok");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_ThrowsYouVersionApiException_WhenApiReturnsError()
+    {
+        var client = BuildClient(HttpStatusCode.BadRequest, """{"error":"invalid_grant"}""");
+
+        var act = () => client.ExchangeCodeAsync("bad-code", "verifier");
+
+        await act.Should().ThrowAsync<YouVersionApiException>()
+            .Where(e => e.StatusCode == HttpStatusCode.BadRequest);
+    }
+
+    // -------------------------------------------------------------------------
+    // RefreshTokenAsync
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RefreshTokenAsync_ReturnsNewToken_WhenRefreshTokenExists()
+    {
+        const string newTokenJson = """
+            { "access_token": "new-acc", "refresh_token": "new-ref",
+              "token_type": "Bearer", "expires_in": 3600 }
+            """;
+
+        var existing = new OAuthTokenResponse
+        {
+            AccessToken = "old-acc", RefreshToken = "ref-tok",
+            ExpiresIn = 3600, ReceivedAt = DateTimeOffset.UtcNow
+        };
+        var tokenProvider = new FakeTokenProvider(existing);
+        var client = BuildClient(HttpStatusCode.OK, newTokenJson, tokenProvider);
+
+        var token = await client.RefreshTokenAsync();
+
+        token.AccessToken.Should().Be("new-acc");
+        token.RefreshToken.Should().Be("new-ref");
+    }
+
+    [Fact]
+    public async Task RefreshTokenAsync_UpdatesStoredToken_AfterRefresh()
+    {
+        const string newTokenJson = """
+            { "access_token": "new-acc", "refresh_token": "new-ref",
+              "token_type": "Bearer", "expires_in": 3600 }
+            """;
+
+        var existing = new OAuthTokenResponse
+        {
+            AccessToken = "old-acc", RefreshToken = "ref-tok",
+            ExpiresIn = 3600, ReceivedAt = DateTimeOffset.UtcNow
+        };
+        var tokenProvider = new FakeTokenProvider(existing);
+        var client = BuildClient(HttpStatusCode.OK, newTokenJson, tokenProvider);
+
+        await client.RefreshTokenAsync();
+
+        var stored = await tokenProvider.GetTokenAsync();
+        stored!.AccessToken.Should().Be("new-acc");
+    }
+
+    [Fact]
+    public async Task RefreshTokenAsync_ThrowsInvalidOperationException_WhenNoTokenStored()
+    {
+        var client = BuildClient(HttpStatusCode.OK, TokenJson, new FakeTokenProvider(initial: null));
+
+        var act = () => client.RefreshTokenAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*sign in again*");
+    }
+
+    [Fact]
+    public async Task RefreshTokenAsync_ThrowsInvalidOperationException_WhenRefreshTokenIsNull()
+    {
+        var existing = new OAuthTokenResponse
+        {
+            AccessToken = "acc", RefreshToken = null,
+            ExpiresIn = 3600, ReceivedAt = DateTimeOffset.UtcNow
+        };
+        var client = BuildClient(HttpStatusCode.OK, TokenJson, new FakeTokenProvider(existing));
+
+        var act = () => client.RefreshTokenAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    // -------------------------------------------------------------------------
+    // SignOutAsync
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SignOutAsync_ClearsStoredToken()
+    {
+        var existing = new OAuthTokenResponse
+        {
+            AccessToken = "acc", RefreshToken = "ref",
+            ExpiresIn = 3600, ReceivedAt = DateTimeOffset.UtcNow
+        };
+        var tokenProvider = new FakeTokenProvider(existing);
+        var client = BuildClient(HttpStatusCode.OK, TokenJson, tokenProvider);
+
+        await client.SignOutAsync();
+
+        var stored = await tokenProvider.GetTokenAsync();
+        stored.Should().BeNull();
+    }
+
+    // -------------------------------------------------------------------------
+    // OAuthTokenResponse.IsExpired
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void IsExpired_ReturnsFalse_WhenTokenIsFresh()
+    {
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = "tok", ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow
+        };
+
+        token.IsExpired().Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsExpired_ReturnsTrue_WhenTokenHasExpired()
+    {
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = "tok", ExpiresIn = 10,
+            ReceivedAt = DateTimeOffset.UtcNow.AddSeconds(-100)
+        };
+
+        token.IsExpired().Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsExpired_ReturnsTrue_WhenTokenIsWithinBuffer()
+    {
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = "tok", ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow.AddSeconds(-(3600 - 30))
+        };
+
+        // 60-second default buffer — token has only 30s remaining
+        token.IsExpired(bufferSeconds: 60).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsExpired_ReturnsFalse_WhenExpiresInMissing_ButAccessTokenExists()
+    {
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = "opaque-access-token",
+            ExpiresIn = 0,
+            ReceivedAt = DateTimeOffset.UtcNow.AddHours(-1)
+        };
+
+        token.IsExpired().Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsExpired_UsesJwtExpClaim_WhenExpiresInMissing()
+    {
+        var exp = DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString();
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = BuildUnsignedJwt("exp", exp),
+            ExpiresIn = 0,
+            ReceivedAt = DateTimeOffset.UtcNow.AddHours(-1)
+        };
+
+        token.IsExpired(bufferSeconds: 60).Should().BeFalse();
+    }
+
+    // -------------------------------------------------------------------------
+    // OAuthTokenResponse identity helpers
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void GetDisplayIdentity_ReturnsEmail_WhenNameIsMissing()
+    {
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = BuildUnsignedJwt("email", "kevin@example.com"),
+            ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow
+        };
+
+        token.GetDisplayIdentity().Should().Be("kevin@example.com");
+    }
+
+    [Fact]
+    public void GetDisplayIdentity_FallsBackToSubject_WhenNameAndEmailMissing()
+    {
+        var token = new OAuthTokenResponse
+        {
+            IdToken = BuildUnsignedJwt("sub", "user-123"),
+            AccessToken = "not-a-jwt",
+            ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow
+        };
+
+        token.GetDisplayIdentity().Should().Be("user-123");
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private static YouVersionOAuthClient BuildClient(
+        HttpStatusCode status,
+        string json,
+        FakeTokenProvider? tokenProvider = null)
+    {
+        var handler = new FakeHttpMessageHandler(status, json);
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://auth.youversion.com")
+        };
+        var options = Options.Create(new YouVersionOAuthOptions
+        {
+            ClientId = "test-client",
+            RedirectUri = new Uri("https://localhost/callback"),
+            AuthorizationEndpoint = new Uri("https://auth.youversion.com/oauth2/authorize"),
+            TokenEndpoint = new Uri("https://auth.youversion.com/oauth2/token")
+        });
+        return new YouVersionOAuthClient(
+            httpClient,
+            options,
+            tokenProvider ?? new FakeTokenProvider(),
+            NullLogger<YouVersionOAuthClient>.Instance);
+    }
+
+    private static string BuildUnsignedJwt(string claimName, string claimValue)
+    {
+        var payload = $"{{\"{claimName}\":\"{claimValue}\"}}";
+        var payloadBytes = Encoding.UTF8.GetBytes(payload);
+        var payloadBase64Url = Convert.ToBase64String(payloadBytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+        return $"header.{payloadBase64Url}.signature";
+    }
+}

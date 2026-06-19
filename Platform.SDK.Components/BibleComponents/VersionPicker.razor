@@ -1,0 +1,30 @@
+﻿@using Platform.SDK.Services
+@inject IVersionService VersionService
+@inject IBibleReaderStateService State
+
+<div class="bible-picker">
+    <label class="form-label fw-semibold" for="version-select">Bible Version</label>
+    @if (_loading)
+    {
+        <div class="spinner-border spinner-border-sm text-primary" role="status">
+            <span class="visually-hidden">Loading versions…</span>
+        </div>
+    }
+    else if (_error is not null)
+    {
+        <div class="alert alert-warning py-1 px-2 small">@_error</div>
+    }
+    else
+    {
+        <select id="version-select"
+                class="form-select"
+                value="@(_selected?.Id.ToString() ?? "")"
+                @onchange="OnVersionChanged">
+            <option value="">— Select a version —</option>
+            @foreach (var v in _versions)
+            {
+                <option value="@v.Id">@v.Abbreviation — @v.LocalizedTitle</option>
+            }
+        </select>
+    }
+</div>

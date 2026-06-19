@@ -1,0 +1,62 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Platform.API.OAuth;
+
+/// <summary>
+/// Provides YouVersion OAuth 2.0 authorization-code + PKCE flow operations.
+/// </summary>
+/// <remarks>
+/// Typical usage:
+/// <list type="number">
+///   <item><description>Call <see cref="BuildAuthorizationUrl"/> to get the URL to redirect the user to.</description></item>
+///   <item><description>The user authenticates and is redirected back with a <c>code</c> query parameter.</description></item>
+///   <item><description>Call <see cref="ExchangeCodeAsync"/> with that code. The resulting token is automatically stored via <see cref="ITokenProvider"/>.</description></item>
+///   <item><description>Subsequent API calls with <c>IHighlightClient</c> are now authorized automatically.</description></item>
+///   <item><description>Call <see cref="RefreshTokenAsync"/> proactively, or rely on <c>OAuthBearerTokenHandler</c> to refresh transparently.</description></item>
+///   <item><description>Call <see cref="SignOutAsync"/> to clear the stored token on sign-out.</description></item>
+/// </list>
+/// </remarks>
+public interface IYouVersionOAuthClient
+{
+    /// <summary>
+    /// Builds the authorization URL and PKCE values needed to start the sign-in flow.
+    /// </summary>
+    /// <param name="state">
+    /// Optional opaque state string for CSRF protection. If omitted, a random value is generated.
+    /// Verify this value matches the <c>state</c> parameter on the callback.
+    /// </param>
+    /// <returns>
+    /// An <see cref="AuthorizationRequest"/> containing the URL to redirect the user to
+    /// and the <see cref="PkceValues"/> to store server-side for the token exchange step.
+    /// </returns>
+    AuthorizationRequest BuildAuthorizationUrl(string? state = null);
+
+    /// <summary>
+    /// Exchanges an authorization code for access and refresh tokens.
+    /// The resulting token is stored via <see cref="ITokenProvider"/>.
+    /// </summary>
+    /// <param name="code">The authorization code received in the redirect callback.</param>
+    /// <param name="codeVerifier">The PKCE code verifier from the matching <see cref="PkceValues"/>.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The <see cref="OAuthTokenResponse"/> containing the access and refresh tokens.</returns>
+    Task<OAuthTokenResponse> ExchangeCodeAsync(
+        string code,
+        string codeVerifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Uses the stored refresh token to obtain a new access token.
+    /// The new token is stored via <see cref="ITokenProvider"/>.
+    /// </summary>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The refreshed <see cref="OAuthTokenResponse"/>.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when no refresh token is available.</exception>
+    Task<OAuthTokenResponse> RefreshTokenAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clears the stored token. Call this on user sign-out.
+    /// </summary>
+    Task SignOutAsync(CancellationToken cancellationToken = default);
+}

@@ -1,0 +1,49 @@
+﻿@using Platform.SDK.Services
+@inject IBibleReaderStateService State
+@implements IDisposable
+
+<div class="bible-picker">
+    <label class="form-label fw-semibold">Verse (or range)</label>
+    @if (State.SelectedChapter is null)
+    {
+        <p class="text-muted small">Select a chapter first.</p>
+    }
+    else
+    {
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <div>
+                <label class="form-label small mb-0" for="verse-start">From</label>
+                <input id="verse-start"
+                       type="number"
+                       class="form-control verse-input"
+                       min="1"
+                       max="@MaxVerse"
+                       value="@(_verseStart)"
+                       @onchange="OnStartChanged" />
+            </div>
+            <div>
+                <label class="form-label small mb-0" for="verse-end">To (optional)</label>
+                <input id="verse-end"
+                       type="number"
+                       class="form-control verse-input"
+                       min="@(_verseStart)"
+                       max="@MaxVerse"
+                       value="@(_verseEnd?.ToString() ?? "")"
+                       @onchange="OnEndChanged" />
+            </div>
+            <div class="align-self-end">
+                <button class="btn btn-sm btn-outline-secondary"
+                        @onclick="ClearRange"
+                        title="Clear verse selection">
+                    ✕
+                </button>
+            </div>
+        </div>
+        @if (_validationError is not null)
+        {
+            <div class="text-danger small mt-1">@_validationError</div>
+        }
+    }
+</div>
+
+

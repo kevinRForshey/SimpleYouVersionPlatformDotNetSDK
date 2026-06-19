@@ -1,0 +1,113 @@
+﻿@page "/"
+@using Platform.SDK.Components.BibleComponents
+@using Platform.SDK.Services;
+@rendermode InteractiveServer
+@inject ITokenProvider TokenProvider
+@inject IBibleReaderStateService State
+@inject NavigationManager Nav
+@inject Microsoft.Extensions.Hosting.IHostEnvironment HostEnvironment
+@implements IDisposable
+
+<PageTitle>YouVersion Bible Reader</PageTitle>
+
+<div class="bible-reader-page">
+
+    @* ── Login banner ─────────────────────────────────────────────────── *@
+    <div class="bible-reader-header d-flex align-items-center justify-content-between mb-4">
+        <h2 class="mb-0">
+            <span class="yv-logo-icon" aria-hidden="true">✝</span> Bible Reader
+        </h2>
+        <div class="auth-status">
+            @if (OAuthError is not null)
+            {
+                <span class="me-2 text-danger small">@OAuthError</span>
+            }
+            @if (_isSignedIn)
+            {
+                <span class="me-3 text-muted small">
+                    You are logged in as: <strong>@(_userName ?? "YouVersion User")</strong>
+                </span>
+                <FluentButton Appearance="Appearance.Accent" @onclick="SignOut">Sign out</FluentButton>
+            }
+            else
+            {
+                <FluentButton Appearance="Appearance.Lightweight" @onclick="SignIn">Sign in with YouVersion</FluentButton>
+            }
+        </div>
+    </div>
+
+  @*   @if (HostEnvironment.IsDevelopment())
+    {
+        <div class="alert alert-secondary py-2 px-3 mb-3 small">
+            <strong>Auth debug</strong>
+            <span class="ms-2">Token: <code>@(_debugTokenPresent ? "present" : "absent")</code></span>
+            <span class="ms-2">Identity: <code>@(_debugIdentity ?? "(none)")</code></span>
+            <span class="ms-2">Callback mode: <code>@(AuthMode ?? "(none)")</code></span>
+            <button class="btn btn-sm btn-outline-secondary ms-3" @onclick="ClearAuthDebugState">
+                Clear auth
+            </button>
+        </div>
+    } *@
+    <BibleReader/>
+</div>
+
+   
+
+@code {
+    // Populated when the OAuth callback redirects with ?oauth_error=...
+    [SupplyParameterFromQuery(Name = "oauth_error")]
+    public string? OAuthError { get; set; }
+
+    [SupplyParameterFromQuery(Name = "auth_mode")]
+    public string? AuthMode { get; set; }
+
+    private PassageDisplay? _passageDisplay;
+    private bool _isSignedIn;
+    private string? _userName;
+    private bool _debugTokenPresent;
+    private string? _debugIdentity;
+    private string? _copyright;
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.OnStateChanged += OnStateChangedHandler;
+        await CheckSignInAsync();
+    }
+
+    // Re-check sign-in state on the first interactive render so the circuit always
+    // reflects the token stored during the OAuth callback, even if the prerender and
+    // circuit DI scopes briefly disagree.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await CheckSignInAsync();
+    }
+
+    private async Task CheckSignInAsync()
+    {
+        var token = await TokenProvider.GetTokenAsync();
+        var signedIn = token is not null && !token.IsExpired();
+        var userName = token?.GetDisplayIdentity();
+        var tokenPresent = token is not null;
+
+        if (signedIn != _isSignedIn || userName != _userName || tokenPresent != _debugTokenPresent)
+        {
+            _isSignedIn = signedIn;
+            _userName   = userName;
+            _debugTokenPresent = tokenPresent;
+            _debugIdentity = userName;
+            StateHasChanged();
+        }
+    }
+
+    private void SignIn() => Nav.NavigateTo("/auth/login", forceLoad: true);
+    private void SignOut() => Nav.NavigateTo("/auth/logout", forceLoad: true);
+    private void ClearAuthDebugState() => Nav.NavigateTo("/auth/logout", forceLoad: true);
+
+    private void OnStateChangedHandler()
+        => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+        => State.OnStateChanged -= OnStateChangedHandler;
+}
+

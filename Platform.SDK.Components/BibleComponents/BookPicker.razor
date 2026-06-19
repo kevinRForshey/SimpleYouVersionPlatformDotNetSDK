@@ -1,0 +1,36 @@
+﻿@using Platform.API.Models
+@using Platform.SDK.Services
+@inject IBibleReaderStateService State
+@inject IBookService BookService
+@implements IDisposable
+
+<div class="bible-picker">
+    <label class="form-label fw-semibold" for="book-select">Book</label>
+    @if (State.SelectedVersion is null)
+    {
+        <p class="text-muted small">Select a version first.</p>
+    }
+    else if (_loading)
+    {
+        <div class="spinner-border spinner-border-sm text-primary" role="status">
+            <span class="visually-hidden">Loading books…</span>
+        </div>
+    }
+    else if (_error is not null)
+    {
+        <div class="alert alert-warning py-1 px-2 small">@_error</div>
+    }
+    else
+    {
+        <select id="book-select"
+                class="form-select"
+                value="@(State.SelectedBook?.Usfm ?? "")"
+                @onchange="OnBookChanged">
+            <option value="">— Select a book —</option>
+            @foreach (var b in _books)
+            {
+                <option value="@b.Usfm">@b.Human</option>
+            }
+        </select>
+    }
+</div>
