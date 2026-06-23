@@ -6,11 +6,7 @@ using YouVersion.UsfmReferences;
 
 namespace Platform.SDK.Services
 {
-    /// <summary>
-    /// Service wrapper around <see cref="IPassageClient"/> for convenient passage retrieval.
-    /// Accepts typed USFM references for type-safe scripture access.
-    /// </summary>
-    public sealed class PassageService(IPassageClient client)
+    public sealed class PassageService(IPassageClient client) : IPassageService
     {
         /// <summary>
         /// Retrieves a Bible passage using a typed USFM reference.

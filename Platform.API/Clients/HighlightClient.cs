@@ -33,6 +33,9 @@ internal sealed partial class HighlightClient(
         string? pageToken = null,
         CancellationToken cancellationToken = default)
     {
+        if (pageToken is not null && string.IsNullOrWhiteSpace(pageToken))
+            throw new ArgumentException("Page token cannot be empty or whitespace.", nameof(pageToken));
+
         var url = pageToken is not null
             ? $"{HighlightsPath}?page_token={System.Uri.EscapeDataString(pageToken)}"
             : HighlightsPath;
@@ -54,11 +57,16 @@ internal sealed partial class HighlightClient(
         HighlightColor color,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(usfm, nameof(usfm));
-        
-        var normalizedUsfm = ToNormalizedUsfm(usfm);
-        logger.LogDebug("Creating highlight for {Usfm} in version {VersionId} with color {Color}.", 
-            normalizedUsfm, versionId, color);
+        if (versionId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(versionId), versionId, "Version id must be greater than zero.");
+
+        if (string.IsNullOrWhiteSpace(usfm))
+            throw new ArgumentException("USFM passage id is required.", nameof(usfm));
+
+        if (!Enum.IsDefined(color))
+            throw new ArgumentOutOfRangeException(nameof(color), color, "Highlight color is invalid.");
+
+        logger.LogDebug("Creating highlight for {Usfm} in version {VersionId} with color {Color}.", usfm, versionId, color);
 
         var payload = new CreateHighlightRequest
         {
@@ -85,6 +93,9 @@ internal sealed partial class HighlightClient(
     /// <inheritdoc />
     public async Task DeleteHighlightAsync(string highlightId, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(highlightId))
+            throw new ArgumentException("Highlight id is required.", nameof(highlightId));
+
         var url = $"{HighlightsPath}/{System.Uri.EscapeDataString(highlightId)}";
         logger.LogDebug("Deleting highlight {HighlightId}.", highlightId);
 
