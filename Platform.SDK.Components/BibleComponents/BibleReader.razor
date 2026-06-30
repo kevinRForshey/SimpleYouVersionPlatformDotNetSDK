@@ -11,22 +11,15 @@
         </div>
 
         <div class="bible-picker-auth">
-            @if (_isSignedIn)
-            {
-                <span class="bible-picker-username me-2">@_userName</span>
-                <button class="read-passage-button" @onclick="SignOutAsync">Sign out</button>
-            }
-            else
-            {
-                <button class="read-passage-button" @onclick="SignInAsync">Sign in</button>
-            }
+            <YouVersionAuth LoginPath="@LoginPath"
+                            LogoutPath="@LogoutPath"
+                            OAuthError="@OAuthError"
+                            OnSignInRequested="@OnSignInRequested"
+                            OnSignOutRequested="@OnSignOutRequested"
+                            ButtonCssClass="read-passage-button"
+                            UsernameCssClass="bible-picker-username me-2" />
         </div>
     </div>
-
-    @if (OAuthError is not null)
-    {
-        <div class="alert alert-danger mt-2 mb-0 py-2">@OAuthError</div>
-    }
 
     <div class="row g-3 bible-picker-grid">
         <div class="col-12 col-md-3">

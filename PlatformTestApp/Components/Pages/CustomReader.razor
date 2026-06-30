@@ -13,18 +13,23 @@
 <div class="cr-page">
 
     <header class="cr-header">
-        <div class="cr-header-meta">
-            <span class="cr-tag">SDK COMPONENTS</span>
-            <span class="cr-tag cr-tag--dim">v1.0.0</span>
+        <div class="cr-header-top">
+            <div class="cr-header-meta">
+                <span class="cr-tag">SDK COMPONENTS</span>
+                <span class="cr-tag cr-tag--dim">v1.0.0</span>
+            </div>
+            <YouVersionAuth OAuthError="@OAuthError" />
         </div>
         <h1 class="cr-title">Build Your Own Reader</h1>
         <p class="cr-subtitle">
-            Demonstration of using the SDK to build a custom 
+            Demonstration of using the SDK to build a custom
             Bible Reader in steps as opposed to the all in one component,
             using individual components.
         </p>
     </header>
 
+    
+    
     <!-- ── Component pipeline (single column, centered) ──────────────────── -->
     <div class="cr-pipeline">
 
@@ -163,6 +168,9 @@
 </div>
 
 @code {
+    [SupplyParameterFromQuery(Name = "oauth_error")]
+    public string? OAuthError { get; set; }
+
     private Passage? _passage;
     private bool _loading;
     private string? _error;
