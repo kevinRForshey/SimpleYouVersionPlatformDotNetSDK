@@ -7,19 +7,32 @@
     <div class="bible-picker-header">
         <div>
             <span class="bible-picker-eyebrow">Choose your passage</span>
-            <h3 class="bible-picker-title">Bible Reader</h3>
+            <h3 class="bible-picker-title">@Title</h3>
         </div>
 
-        <div class="bible-picker-mark" aria-hidden="true">
-            ✦
+        <div class="bible-picker-auth">
+            @if (_isSignedIn)
+            {
+                <span class="bible-picker-username me-2">@_userName</span>
+                <button class="read-passage-button" @onclick="SignOutAsync">Sign out</button>
+            }
+            else
+            {
+                <button class="read-passage-button" @onclick="SignInAsync">Sign in</button>
+            }
         </div>
     </div>
+
+    @if (OAuthError is not null)
+    {
+        <div class="alert alert-danger mt-2 mb-0 py-2">@OAuthError</div>
+    }
 
     <div class="row g-3 bible-picker-grid">
         <div class="col-12 col-md-3">
             <section class="picker-card">
                 <span class="picker-label">Version</span>
-                <VersionPicker />
+                <VersionPicker LanguageRange="@LanguageRange" />
             </section>
         </div>
 
@@ -72,7 +85,14 @@
 
 @if(_passage is not null)
 {
-    <VerseComponent Passage="@(_passage!)" Copyright="@_copyright" />
+    @if (PassageTemplate is not null)
+    {
+        @PassageTemplate(_passage!)
+    }
+    else
+    {
+        <VerseComponent Passage="@(_passage!)" Copyright="@_copyright" />
+    }
 }
 else if (_loading)
 {

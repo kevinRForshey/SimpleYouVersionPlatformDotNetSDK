@@ -2,7 +2,7 @@ using Microsoft.FluentUI.AspNetCore.Components;
 
 using Platform.API.Extensions;
 using Platform.API.OAuth;
-using Platform.SDK.Services;
+using Platform.SDK.Components.Extensions;
 
 using PlatformTestApp.Components;
 
@@ -30,12 +30,8 @@ builder.Services.AddYouVersionOAuth(o =>
         o.ClientId = builder.Configuration["YouVersionApi:AppKey"] ?? string.Empty;
 });
 
-// App-layer services
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<IBibleReaderStateService, BibleReaderStateService>();
-builder.Services.AddScoped<IVersionService, VersionService>();
-builder.Services.AddScoped<IBookService, BookService>();
-builder.Services.AddScoped<IPassageService, PassageService>();
+builder.Services.AddYouVersionComponents();
 
 // Session support for OAuth PKCE code verifier / state storage
 builder.Services.AddDistributedMemoryCache();
