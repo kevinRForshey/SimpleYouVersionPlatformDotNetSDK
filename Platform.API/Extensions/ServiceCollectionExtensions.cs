@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -213,8 +214,27 @@ public static class ServiceCollectionExtensions
         configureOptions?.Invoke(opts);
         services.AddSingleton(opts);
 
-        services.AddMemoryCache();
-        services.AddHybridCache();
+        // ── Redis L2 ────────────────────────────────────────────────────────
+        // Register Redis before HybridCache so HybridCache discovers it as L2.
+        // Skipped when no connection string is provided — L1-only mode.
+        if (!string.IsNullOrWhiteSpace(opts.RedisConnectionString))
+        {
+            services.AddStackExchangeRedisCache(o =>
+                o.Configuration = opts.RedisConnectionString);
+        }
+
+        // ── In-process L1 ───────────────────────────────────────────────────
+        // SizeLimit enables LRU eviction so the process cache doesn't grow without bound.
+        if (opts.MaxL1Entries.HasValue)
+            services.AddMemoryCache(o => o.SizeLimit = opts.MaxL1Entries.Value);
+        else
+            services.AddMemoryCache();
+
+        // ── HybridCache ─────────────────────────────────────────────────────
+        // Automatically uses the registered IDistributedCache (Redis) as L2 when present.
+        // MaximumPayloadBytes prevents a single oversized response from filling L1 —
+        // the value is still returned to the caller but not written to either tier.
+        services.AddHybridCache(o => o.MaximumPayloadBytes = 4 * 1024 * 1024); // 4 MB
 
         // Replace the plain interface → implementation forward with caching decorators.
         // The underlying BibleClient/PassageClient typed HTTP clients remain registered and
