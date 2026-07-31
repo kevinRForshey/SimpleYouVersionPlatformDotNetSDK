@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [Development, main, Dev-Refactoring]  # TODO: remove Dev-Refactoring once CI is verified on this branch
+    branches: [Development, main]
   pull_request:
     branches: [Development, main]
 
@@ -91,10 +91,9 @@ jobs:
         run: cat coveragereport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
 
       # Deterministic pipeline gate, not an AI judgment call: fails the build if merged
-      # line coverage drops below the floor. 35% is a conservative starting point (well
-      # below every project's individually-measured baseline) chosen to catch a gross
-      # regression without false-failing on the merged report's first real run -- raise it
-      # once a few CI runs confirm the actual steady-state merged percentage.
+      # line coverage drops below the floor. Verified merged coverage on run 30618928907
+      # (both ubuntu-latest and windows-latest) was 76.68%; 65% leaves headroom for normal
+      # fluctuation while still catching a real regression.
       - name: Enforce coverage floor
         run: |
           LINE_RATE=$(grep -m1 -oE 'line-rate="[0-9.]+"' coveragereport/Cobertura.xml | grep -oE '[0-9.]+')
@@ -107,13 +106,13 @@ jobs:
             *.*) DECIMALS="${LINE_RATE#*.}0000"; BASIS_POINTS=$((10#${DECIMALS:0:4})) ;;
             *) BASIS_POINTS=$((LINE_RATE * 10000)) ;;
           esac
-          THRESHOLD=3500
+          THRESHOLD=6500
 
           PERCENT_WHOLE=$((BASIS_POINTS / 100))
           PERCENT_FRACTION=$((BASIS_POINTS % 100))
-          echo "Merged line coverage: ${PERCENT_WHOLE}.${PERCENT_FRACTION}% (floor: 35%)"
+          echo "Merged line coverage: ${PERCENT_WHOLE}.${PERCENT_FRACTION}% (floor: 65%)"
 
           if [ "$BASIS_POINTS" -lt "$THRESHOLD" ]; then
-            echo "Line coverage is below the 35% floor." >&2
+            echo "Line coverage is below the 65% floor." >&2
             exit 1
           fi

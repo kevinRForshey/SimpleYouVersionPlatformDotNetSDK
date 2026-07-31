@@ -14,7 +14,7 @@ git tags (see `README.md` — "Versioning & Releases").
   doc comments, and messages (factual/technical references — API URLs, header names, JSON
   property names, the required non-affiliation disclaimer — are unaffected).
 - CI now merges every test project's coverage output and fails the build if merged line coverage
-  drops below 35%, instead of only publishing a coverage summary with no enforced threshold. See
+  drops below 65%, instead of only publishing a coverage summary with no enforced threshold. See
   the "Enforce coverage floor" step in `.github/workflows/ci.yml`.
 
 ### Fixed
