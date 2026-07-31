@@ -6,6 +6,17 @@ git tags (see `README.md` — "Versioning & Releases").
 
 ## [Unreleased]
 
+### Changed
+- Relicensed from MIT to Apache License 2.0 (all five packages, including
+  `BiblePlatform.UsfmReferences`). See `LICENSE` and the new `NOTICE` file.
+- Repositioned this repository as a clone-and-build reference implementation rather than an
+  installable SDK, and removed remaining "YouVersion"/"Life.Church" branding from identifiers,
+  doc comments, and messages (factual/technical references — API URLs, header names, JSON
+  property names, the required non-affiliation disclaimer — are unaffected).
+- CI now merges every test project's coverage output and fails the build if merged line coverage
+  drops below 65%, instead of only publishing a coverage summary with no enforced threshold. See
+  the "Enforce coverage floor" step in `.github/workflows/ci.yml`.
+
 ### Fixed
 - `Platform.API/README.md`'s install snippet showed a stale `Version="1.0.0"` that doesn't exist on
   the feed (actual published version was `0.1.0`), which would cause a restore failure for anyone

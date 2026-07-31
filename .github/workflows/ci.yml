@@ -27,21 +27,21 @@ jobs:
         with:
           dotnet-version: '10.x'
 
-      # nuget.config points a local package source ("YouVersionLocal") at ./packages, which
-      # PlatformTestApp restores YouVersion.Platform.SDK.Components from. NuGet requires local
+      # nuget.config points a local package source ("BibleLocal") at ./packages, which
+      # PlatformTestApp restores BiblePlatform.SDK.Components from. NuGet requires local
       # source directories to exist at restore time -- even for projects that don't consume
       # anything from them -- or restore fails with NU1301, so create it before any restore runs.
       - name: Create local NuGet feed directory
         run: mkdir -p packages
 
-      # PlatformTestApp consumes YouVersion.Platform.SDK.Components as a packed NuGet
-      # package (via the "YouVersionLocal" feed in nuget.config), not a ProjectReference,
+      # PlatformTestApp consumes BiblePlatform.SDK.Components as a packed NuGet
+      # package (via the "BibleLocal" feed in nuget.config), not a ProjectReference,
       # so it exercises the real consumer experience. Build and pack the libraries in
       # dependency order first so that feed is populated before anything restores against it.
       - name: Build libraries
         run: |
           dotnet build Platform.API.Models -c Release
-          dotnet build YouVersion.UsfmReferences -c Release
+          dotnet build BiblePlatform.UsfmReferences -c Release
           dotnet build Platform.API -c Release
           dotnet build Platform.SDK.Services -c Release
           dotnet build Platform.SDK.Components -c Release
@@ -51,18 +51,18 @@ jobs:
       - name: Test
         run: |
           dotnet test Platform.API.Tests -c Release --verbosity normal --collect:"XPlat Code Coverage"
-          dotnet test YouVersion.UsfmReferences.Tests -c Release --verbosity normal --collect:"XPlat Code Coverage"
+          dotnet test BiblePlatform.UsfmReferences.Tests -c Release --verbosity normal --collect:"XPlat Code Coverage"
           dotnet test Platform.SDK.Services.Tests -c Release --verbosity normal --collect:"XPlat Code Coverage"
           dotnet test Platform.SDK.Components.Tests -c Release --verbosity normal --collect:"XPlat Code Coverage"
 
       - name: Scan for vulnerable NuGet packages
-        run: dotnet list YouVersionPlatform.slnx package --vulnerable --include-transitive
+        run: dotnet list BiblePlatform.slnx package --vulnerable --include-transitive
 
       - name: Pack libraries to local feed
         run: |
           mkdir -p packages
           dotnet pack Platform.API.Models -c Release --no-build -o packages
-          dotnet pack YouVersion.UsfmReferences -c Release --no-build -o packages
+          dotnet pack BiblePlatform.UsfmReferences -c Release --no-build -o packages
           dotnet pack Platform.API -c Release --no-build -o packages
           dotnet pack Platform.SDK.Services -c Release --no-build -o packages
           dotnet pack Platform.SDK.Components -c Release --no-build -o packages
@@ -85,7 +85,34 @@ jobs:
         with:
           reports: '**/TestResults/**/coverage.cobertura.xml'
           targetdir: 'coveragereport'
-          reporttypes: 'MarkdownSummaryGithub'
+          reporttypes: 'MarkdownSummaryGithub;Cobertura'
 
       - name: Publish coverage summary
         run: cat coveragereport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Deterministic pipeline gate, not an AI judgment call: fails the build if merged
+      # line coverage drops below the floor. Verified merged coverage on run 30618928907
+      # (both ubuntu-latest and windows-latest) was 76.68%; 65% leaves headroom for normal
+      # fluctuation while still catching a real regression.
+      - name: Enforce coverage floor
+        run: |
+          LINE_RATE=$(grep -m1 -oE 'line-rate="[0-9.]+"' coveragereport/Cobertura.xml | grep -oE '[0-9.]+')
+          if [ -z "$LINE_RATE" ]; then
+            echo "Could not read line-rate from coveragereport/Cobertura.xml" >&2
+            exit 1
+          fi
+
+          case "$LINE_RATE" in
+            *.*) DECIMALS="${LINE_RATE#*.}0000"; BASIS_POINTS=$((10#${DECIMALS:0:4})) ;;
+            *) BASIS_POINTS=$((LINE_RATE * 10000)) ;;
+          esac
+          THRESHOLD=6500
+
+          PERCENT_WHOLE=$((BASIS_POINTS / 100))
+          PERCENT_FRACTION=$((BASIS_POINTS % 100))
+          echo "Merged line coverage: ${PERCENT_WHOLE}.${PERCENT_FRACTION}% (floor: 65%)"
+
+          if [ "$BASIS_POINTS" -lt "$THRESHOLD" ]; then
+            echo "Line coverage is below the 65% floor." >&2
+            exit 1
+          fi

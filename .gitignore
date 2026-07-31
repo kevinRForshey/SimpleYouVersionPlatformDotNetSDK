@@ -75,3 +75,4 @@ appsettings.*.local.json
 # Local AI-assistant tool state (machine-local, not project source)
 /.claude/
 /.tokensave/
+/CLAUDE.md
