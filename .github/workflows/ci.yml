@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [Development, main]
+    branches: [Development, main, Dev-Refactoring]  # TODO: remove Dev-Refactoring once CI is verified on this branch
   pull_request:
     branches: [Development, main]
 
