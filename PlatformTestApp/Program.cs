@@ -2,6 +2,7 @@ using Microsoft.FluentUI.AspNetCore.Components;
 
 using Platform.API.Extensions;
 using Platform.API.OAuth;
+using Microsoft.Extensions.Options;
 using Platform.SDK.Components.Extensions;
 
 using PlatformTestApp.Auth;
@@ -42,6 +43,22 @@ builder.Services.AddBibleOAuth(o =>
     // Apps can use the app key as the OAuth client identifier.
     if (string.IsNullOrWhiteSpace(o.ClientId))
         o.ClientId = builder.Configuration["BibleApi:AppKey"] ?? string.Empty;
+
+    if (o.RedirectUri is null)
+    {
+        throw new InvalidOperationException(
+            "PlatformTestApp requires BibleOAuth:RedirectUri to be configured. " +
+            "Set it to the root callback URI (for example: https://localhost:52413)."
+        );
+    }
+
+    if (o.RedirectUri.AbsolutePath != "/")
+    {
+        throw new InvalidOperationException(
+            "PlatformTestApp requires BibleOAuth:RedirectUri to be the root callback URI. " +
+            "Remove any path such as /oauth/callback and use https://localhost:52413 instead."
+        );
+    }
 });
 
 builder.Services.AddBibleComponents();
@@ -69,16 +86,22 @@ app.UseHttpsRedirection();
 app.UseSession();
 
 #endregion
-// The platform redirects back to http://localhost:52413?code=...&state=...
+// The platform redirects back to a registered callback URL such as
+// https://localhost:52413.
 // Each callback shape is handled by its own method in OAuthCallbackHandlers; this stays a flat
 // dispatch list so a new callback shape is one more line here, not one more inline `if` block.
 app.Use(async (HttpContext ctx, RequestDelegate next) =>
 {
-    if (ctx.Request.Path != "/" || ctx.Request.Query.Count == 0)
+    var path = ctx.Request.Path;
+    var isOAuthCallbackPath = path == "/";
+    if (!isOAuthCallbackPath || ctx.Request.Query.Count == 0)
     {
         await next(ctx);
         return;
     }
+
+    ctx.RequestServices.GetRequiredService<ILogger<Program>>()
+        .LogDebug("Handling OAuth callback on path {Path} with query {Query}.", path, ctx.Request.QueryString);
 
     OAuthCallbackHandlers.LogIncomingQuery(ctx);
 
@@ -108,10 +131,14 @@ app.MapRazorComponents<App>()
 // reuse the same tested sign-in path, rather than /auth/request-highlights taking the separate
 // (less-exercised) RequestPermissionsAsync + BuildDataExchangeApprovalUrl round trip. Switch to
 // that two-step flow if avoiding the extra redirect for already-signed-in users matters more.
-static IResult RedirectToAuthorize(IBibleOAuthClient oauthClient, HttpContext ctx, IEnumerable<string>? requestedPermissions)
+static IResult RedirectToAuthorize(IBibleOAuthClient oauthClient, HttpContext ctx, IOptions<BibleOAuthOptions> oauthOptions, IEnumerable<string>? requestedPermissions)
 {
     var state = Base64Url(RandomNumberGenerator.GetBytes(16));
     var authRequest = oauthClient.BuildAuthorizationUrl(state, requestedPermissions);
+    var redirectUri = oauthOptions.Value.RedirectUri?.AbsoluteUri ?? "<not configured>";
+    ctx.RequestServices.GetRequiredService<ILogger<Program>>()
+        .LogInformation("OAuth redirect_uri configured as {RedirectUri}. Authorization URL: {AuthorizationUrl}",
+            redirectUri, authRequest.AuthorizationUrl.AbsoluteUri);
     ctx.Session.SetString("pkce_verifier", authRequest.Pkce.CodeVerifier);
     ctx.Session.SetString("oauth_state", state);
     return Results.Redirect(authRequest.AuthorizationUrl.AbsoluteUri);
@@ -120,14 +147,14 @@ static IResult RedirectToAuthorize(IBibleOAuthClient oauthClient, HttpContext ct
 // OAuth login redirect endpoint — writes PKCE verifier to session then redirects
 // to the platform's authorization server. Must be a minimal API (not a Blazor page)
 // so HttpContext.Session is writable before the external redirect occurs.
-app.MapGet("/auth/login", (IBibleOAuthClient oauthClient, HttpContext ctx) =>
-    RedirectToAuthorize(oauthClient, ctx, requestedPermissions: null));
+app.MapGet("/auth/login", (IBibleOAuthClient oauthClient, IOptions<BibleOAuthOptions> oauthOptions, HttpContext ctx) =>
+    RedirectToAuthorize(oauthClient, ctx, oauthOptions, requestedPermissions: null));
 
 // "Grant highlights access" for an already-signed-in user — same redirect as /auth/login, but
 // requesting "highlights". See RedirectToAuthorize for why this path is used instead of the
 // separate RequestPermissionsAsync + BuildDataExchangeApprovalUrl round trip.
-app.MapGet("/auth/request-highlights", (IBibleOAuthClient oauthClient, HttpContext ctx) =>
-    RedirectToAuthorize(oauthClient, ctx, requestedPermissions: ["highlights"]));
+app.MapGet("/auth/request-highlights", (IBibleOAuthClient oauthClient, IOptions<BibleOAuthOptions> oauthOptions, HttpContext ctx) =>
+    RedirectToAuthorize(oauthClient, ctx, oauthOptions, requestedPermissions: ["highlights"]));
 
 app.MapGet("/auth/logout", async (IBibleOAuthClient oauthClient, HttpContext ctx) =>
 {

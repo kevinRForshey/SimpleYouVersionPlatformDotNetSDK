@@ -19,9 +19,15 @@ internal static class JwtHelper
         if (!TryDecodePayload(jwt, out var doc)) return null;
         using (doc)
         {
-            return doc!.RootElement.TryGetProperty(claimName, out var val)
-                ? val.GetString()
-                : null;
+            if (!doc!.RootElement.TryGetProperty(claimName, out var val))
+                return null;
+
+            return val.ValueKind switch
+            {
+                JsonValueKind.String => val.GetString(),
+                JsonValueKind.Number => val.GetRawText(),
+                _ => val.ToString()
+            };
         }
     }
 
@@ -43,6 +49,33 @@ internal static class JwtHelper
                 JsonValueKind.String when long.TryParse(val.GetString(), out var n) => n,
                 _ => null
             };
+        }
+    }
+
+    /// <summary>
+    /// Returns the first non-empty string claim value matching any of <paramref name="claimNames"/>,
+    /// or <see langword="null"/> if none match.
+    /// </summary>
+    internal static string? GetFirstAvailableClaim(string? jwt, params string[] claimNames)
+    {
+        if (!TryDecodePayload(jwt, out var doc)) return null;
+        using (doc)
+        {
+            foreach (var name in claimNames)
+            {
+                if (doc!.RootElement.TryGetProperty(name, out var val))
+                {
+                    var str = val.ValueKind switch
+                    {
+                        JsonValueKind.String => val.GetString(),
+                        JsonValueKind.Number => val.GetRawText(),
+                        _ => val.ToString()
+                    };
+                    if (!string.IsNullOrWhiteSpace(str))
+                        return str;
+                }
+            }
+            return null;
         }
     }
 

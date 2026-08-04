@@ -73,6 +73,16 @@ public sealed class OAuthClientTests
     }
 
     [Fact]
+    public void BuildAuthorizationUrl_UsesAppKeyAsClientId_WhenClientIdIsMissing()
+    {
+        var client = BuildClient(HttpStatusCode.OK, TokenJson, appKey: "test-app-key", clientId: string.Empty);
+
+        var authRequest = client.BuildAuthorizationUrl();
+
+        authRequest.AuthorizationUrl.AbsoluteUri.Should().Contain("client_id=test-app-key");
+    }
+
+    [Fact]
     public void BuildAuthorizationUrl_GeneratesPkce_WithNonEmptyVerifierAndChallenge()
     {
         var client = BuildClient(HttpStatusCode.OK, TokenJson);
@@ -325,6 +335,43 @@ public sealed class OAuthClientTests
         query.Should().Contain("user_name=Kevin");
         query.Should().Contain("user_email=kevin%40example.com");
         query.Should().Contain("profile_picture=");
+    }
+
+    [Fact]
+    public async Task CompleteIdentityCallbackAsync_EnrichesTokenWithSyntheticIdentity_WhenTokenEndpointLacksIdentityClaims()
+    {
+        var identityRedirect = new HttpResponseMessage(HttpStatusCode.Found);
+        identityRedirect.Headers.Location = new Uri("https://auth.youversion.com/auth/callback?code=auth-code-xyz");
+        var tokenResponse = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(TokenJson, Encoding.UTF8, "application/json")
+        };
+        var handler = new SequencedHttpMessageHandler(identityRedirect, tokenResponse);
+        var tokenProvider = new FakeTokenProvider();
+        var client = BuildClientFromSequencedHandler(handler, tokenProvider);
+
+        var token = await client.CompleteIdentityCallbackAsync(
+            "state-abc", "yvp-123", "Jane Doe", "jane@example.com", null, "verifier");
+
+        token.GetUserName().Should().Be("Jane Doe");
+        token.GetEmail().Should().Be("jane@example.com");
+        token.GetDisplayIdentity().Should().Be("Jane Doe");
+
+        var stored = await tokenProvider.GetTokenAsync();
+        stored.Should().NotBeNull();
+        stored!.GetUserName().Should().Be("Jane Doe");
+    }
+
+    [Theory]
+    [InlineData("username", "janedoe")]
+    [InlineData("given_name", "Jane")]
+    [InlineData("nickname", "Janie")]
+    public void GetUserName_SupportsAdditionalClaimNames(string claimName, string expectedValue)
+    {
+        var jwt = BuildUnsignedJwt(claimName, expectedValue);
+        var token = new OAuthTokenResponse { IdToken = jwt };
+
+        token.GetUserName().Should().Be(expectedValue);
     }
 
     [Fact]
@@ -831,6 +878,32 @@ public sealed class OAuthClientTests
     }
 
     [Fact]
+    public void GetDisplayIdentity_ReturnsUserName_WhenUserNameClaimIsPresent()
+    {
+        var token = new OAuthTokenResponse
+        {
+            IdToken = BuildUnsignedJwt("user_name", "yv-user"),
+            ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow
+        };
+
+        token.GetDisplayIdentity().Should().Be("yv-user");
+    }
+
+    [Fact]
+    public void GetDisplayIdentity_ReturnsYvpId_WhenNameAndEmailMissing()
+    {
+        var token = new OAuthTokenResponse
+        {
+            IdToken = BuildUnsignedJwt("yvp_id", "yv-123"),
+            ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow
+        };
+
+        token.GetDisplayIdentity().Should().Be("yv-123");
+    }
+
+    [Fact]
     public void GetDisplayIdentity_FallsBackToSubject_WhenNameAndEmailMissing()
     {
         var token = new OAuthTokenResponse
@@ -852,7 +925,8 @@ public sealed class OAuthClientTests
         HttpStatusCode status,
         string json,
         FakeTokenProvider? tokenProvider = null,
-        string? appKey = "test-app-key")
+        string? appKey = "test-app-key",
+        string? clientId = "test-client")
     {
         var handler = new FakeHttpMessageHandler(status, json);
         var httpClient = new HttpClient(handler)
@@ -861,7 +935,7 @@ public sealed class OAuthClientTests
         };
         var options = Options.Create(new BibleOAuthOptions
         {
-            ClientId = "test-client",
+            ClientId = clientId ?? string.Empty,
             RedirectUri = new Uri("https://localhost/callback"),
             AuthorizationEndpoint = new Uri("https://auth.youversion.com/oauth2/authorize"),
             TokenEndpoint = new Uri("https://auth.youversion.com/oauth2/token")
@@ -878,12 +952,13 @@ public sealed class OAuthClientTests
     private static BibleOAuthClient BuildClientFromHandler(
         FakeHttpMessageHandler handler,
         FakeTokenProvider? tokenProvider = null,
-        string? appKey = "test-app-key")
+        string? appKey = "test-app-key",
+        string? clientId = "test-client")
     {
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://auth.youversion.com") };
         var options = Options.Create(new BibleOAuthOptions
         {
-            ClientId = "test-client",
+            ClientId = clientId ?? string.Empty,
             RedirectUri = new Uri("https://localhost/callback"),
             AuthorizationEndpoint = new Uri("https://auth.youversion.com/oauth2/authorize"),
             TokenEndpoint = new Uri("https://auth.youversion.com/oauth2/token")
@@ -900,12 +975,13 @@ public sealed class OAuthClientTests
     private static BibleOAuthClient BuildClientFromSequencedHandler(
         SequencedHttpMessageHandler handler,
         FakeTokenProvider? tokenProvider = null,
-        string? appKey = "test-app-key")
+        string? appKey = "test-app-key",
+        string? clientId = "test-client")
     {
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://auth.youversion.com") };
         var options = Options.Create(new BibleOAuthOptions
         {
-            ClientId = "test-client",
+            ClientId = clientId ?? string.Empty,
             RedirectUri = new Uri("https://localhost/callback"),
             AuthorizationEndpoint = new Uri("https://auth.youversion.com/oauth2/authorize"),
             AuthCallbackEndpoint = new Uri("https://auth.youversion.com/auth/callback"),

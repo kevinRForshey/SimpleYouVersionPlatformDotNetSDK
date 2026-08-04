@@ -48,8 +48,11 @@ cd PlatformTestApp
 dotnet user-secrets init
 dotnet user-secrets set "BibleApi:AppKey" "YOUR_APP_KEY"
 dotnet user-secrets set "BibleOAuth:ClientId" "YOUR_CLIENT_ID"
-dotnet user-secrets set "BibleOAuth:RedirectUri" "http://localhost:52413"
+dotnet user-secrets set "BibleOAuth:RedirectUri" "https://localhost:52413"
 ```
+
+The redirect URI must be registered in the developer portal exactly as `https://localhost:52413`.
+Do not register a callback path such as `/oauth/callback` for this sample app.
 
 Then run it:
 

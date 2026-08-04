@@ -1,6 +1,9 @@
 @if (_isSignedIn)
 {
-    <span class="@UsernameCssClass">@_userName</span>
+    @if (!string.IsNullOrWhiteSpace(_userName))
+    {
+        <span class="@UsernameCssClass">Welcome, @_userName</span>
+    }
     <button class="@ButtonCssClass" @onclick="SignOutAsync">Sign out</button>
 }
 else

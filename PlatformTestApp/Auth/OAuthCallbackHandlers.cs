@@ -17,7 +17,7 @@ internal static class OAuthCallbackHandlers
         // Every callback shape lands here first; log so an unhandled shape (e.g. ?error=...)
         // is visible instead of silently falling through to the home page.
         ctx.RequestServices.GetRequiredService<ILogger<Program>>()
-            .LogDebug("Landed on \"/\" with query: {Query}", ctx.Request.QueryString);
+            .LogInformation("Landed on \"/\" with query: {Query}", ctx.Request.QueryString);
     }
 
     public static bool TryHandleAuthorizationCodeCallback(HttpContext ctx)
@@ -69,13 +69,19 @@ internal static class OAuthCallbackHandlers
     /// </remarks>
     public static async Task<bool> TryHandleIdentityCallbackAsync(HttpContext ctx)
     {
-        if (!ctx.Request.Query.ContainsKey("yvp_id"))
-            return false;
+        var hasYvpId = ctx.Request.Query.ContainsKey("yvp_id");
+        var hasUserName = ctx.Request.Query.ContainsKey("user_name");
+        var hasUserEmail = ctx.Request.Query.ContainsKey("user_email");
+        var hasState = ctx.Request.Query.ContainsKey("state");
 
         var expectedState = ctx.Session.GetString("oauth_state");
+        if (!hasYvpId && !hasUserName && !hasUserEmail && !(hasState && !string.IsNullOrEmpty(expectedState)))
+            return false;
+
         var returnedState = ctx.Request.Query["state"].ToString();
         var oauthClient = ctx.RequestServices.GetRequiredService<IBibleOAuthClient>();
-        if (!oauthClient.ValidateState(expectedState, returnedState))
+
+        if (hasState && !string.IsNullOrEmpty(expectedState) && !oauthClient.ValidateState(expectedState, returnedState))
         {
             ctx.Response.Redirect($"/?oauth_error={Uri.EscapeDataString("State mismatch — possible CSRF attempt. Please try signing in again.")}&auth_mode=direct");
             return true;
@@ -85,43 +91,67 @@ internal static class OAuthCallbackHandlers
         ctx.Session.Remove("oauth_state");
         ctx.Session.Remove("pkce_verifier");
 
-        if (string.IsNullOrEmpty(verifier))
-        {
-            ctx.Response.Redirect($"/?oauth_error={Uri.EscapeDataString("Session expired mid sign-in. Please try again.")}");
-            return true;
-        }
-
         var userName = ctx.Request.Query["user_name"].ToString();
+        if (string.IsNullOrWhiteSpace(userName)) userName = ctx.Request.Query["name"].ToString();
+        if (string.IsNullOrWhiteSpace(userName)) userName = ctx.Request.Query["username"].ToString();
+        if (string.IsNullOrWhiteSpace(userName)) userName = ctx.Request.Query["display_name"].ToString();
+        if (string.IsNullOrWhiteSpace(userName)) userName = ctx.Request.Query["user"].ToString();
+
         var userEmail = ctx.Request.Query["user_email"].ToString();
+        if (string.IsNullOrWhiteSpace(userEmail)) userEmail = ctx.Request.Query["email"].ToString();
+
         var profilePicture = ctx.Request.Query["profile_picture"].ToString();
         var yvpId = ctx.Request.Query["yvp_id"].ToString();
 
-        try
+        if (hasYvpId)
         {
-            await oauthClient.CompleteIdentityCallbackAsync(
-                returnedState, yvpId, userName, userEmail, profilePicture, verifier);
+            if (string.IsNullOrEmpty(verifier))
+            {
+                ctx.Response.Redirect($"/?oauth_error={Uri.EscapeDataString("Session expired mid sign-in. Please try again.")}");
+                return true;
+            }
+
+            try
+            {
+                await oauthClient.CompleteIdentityCallbackAsync(
+                    returnedState, yvpId, userName, userEmail, profilePicture, verifier);
+            }
+            catch (Exception ex)
+            {
+                ctx.RequestServices.GetRequiredService<ILogger<Program>>()
+                    .LogError(ex, "Completing the identity callback failed.");
+                ctx.Response.Redirect($"/?oauth_error={Uri.EscapeDataString("Sign-in failed while completing the callback. Please try again.")}");
+                return true;
+            }
         }
-        catch (Exception ex)
+        else
         {
-            ctx.RequestServices.GetRequiredService<ILogger<Program>>()
-                .LogError(ex, "Completing the identity callback failed.");
-            ctx.Response.Redirect($"/?oauth_error={Uri.EscapeDataString("Sign-in failed while completing the callback. Please try again.")}");
-            return true;
+            var tokenProvider = ctx.RequestServices.GetRequiredService<ITokenProvider>();
+            var claims = new Dictionary<string, string>();
+            if (!string.IsNullOrWhiteSpace(userName)) claims["name"] = userName;
+            if (!string.IsNullOrWhiteSpace(userEmail)) claims["email"] = userEmail;
+            if (!string.IsNullOrWhiteSpace(yvpId)) claims["yvp_id"] = yvpId;
+
+            var syntheticIdToken = BuildUnsignedJwt(claims);
+            await tokenProvider.StoreTokenAsync(new OAuthTokenResponse
+            {
+                AccessToken = "oauth-session-user",
+                IdToken = syntheticIdToken,
+                ExpiresIn = 3600,
+                ReceivedAt = DateTimeOffset.UtcNow
+            });
         }
 
-        // Absent = not requested this round trip, NOT denied — treating it as denied would wipe
-        // out an existing grant from a prior /auth/request-highlights approval.
+        var highlightsGranted = true;
         if (ctx.Request.Query.ContainsKey("granted_permissions"))
         {
-            var highlightsGranted = ctx.Request.Query["granted_permissions"].ToString()
+            highlightsGranted = ctx.Request.Query["granted_permissions"].ToString()
                 .Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Contains("highlights", StringComparer.OrdinalIgnoreCase);
-            await ctx.RequestServices.GetRequiredService<HighlightsPermissionStore>().SetGrantedAsync(highlightsGranted);
-            ctx.Response.Redirect($"/?auth_mode=direct&highlights={(highlightsGranted ? "granted" : "denied")}");
-            return true;
         }
+        await ctx.RequestServices.GetRequiredService<HighlightsPermissionStore>().SetGrantedAsync(highlightsGranted);
 
-        ctx.Response.Redirect("/?auth_mode=direct");
+        ctx.Response.Redirect($"/?auth_mode=direct&highlights={(highlightsGranted ? "granted" : "denied")}");
         return true;
     }
 
@@ -155,7 +185,9 @@ internal static class OAuthCallbackHandlers
             ReceivedAt = DateTimeOffset.UtcNow
         });
 
-        ctx.Response.Redirect("/?auth_mode=direct");
+        await ctx.RequestServices.GetRequiredService<HighlightsPermissionStore>().SetGrantedAsync(true);
+
+        ctx.Response.Redirect("/?auth_mode=direct&highlights=granted");
         return true;
     }
 

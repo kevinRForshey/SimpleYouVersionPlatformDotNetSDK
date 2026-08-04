@@ -15,7 +15,8 @@ namespace Platform.SDK.Services
             if (token is null || token.IsExpired())
                 return AuthSession.SignedOut;
 
-            return new AuthSession(IsSignedIn: true, DisplayName: token.GetDisplayIdentity());
+            var name = token.GetDisplayIdentity();
+            return new AuthSession(IsSignedIn: true, DisplayName: name);
         }
     }
 }

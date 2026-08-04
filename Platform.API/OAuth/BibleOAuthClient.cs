@@ -54,11 +54,12 @@ internal sealed class BibleOAuthClient : IBibleOAuthClient
         if (!scopes.Split(' ').Contains("openid", StringComparer.Ordinal))
             scopes = (scopes.Length > 0 ? scopes + " " : "") + "openid";
 
+        var clientId = ResolveClientId();
         var redirectUri = _options.RedirectUri?.AbsoluteUri.TrimEnd('/') ?? string.Empty;
 
         var query = new StringBuilder();
         query.Append("?response_type=code");
-        query.Append("&client_id="); query.Append(Uri.EscapeDataString(_options.ClientId));
+        query.Append("&client_id="); query.Append(Uri.EscapeDataString(clientId));
         if (redirectUri.Length > 0)
         {
             query.Append("&redirect_uri="); query.Append(Uri.EscapeDataString(redirectUri));
@@ -117,10 +118,11 @@ internal sealed class BibleOAuthClient : IBibleOAuthClient
 
         _logger.LogDebug("Exchanging authorization code for tokens.");
 
+        var clientId = ResolveClientId();
         var formData = new Dictionary<string, string>
         {
             ["grant_type"] = "authorization_code",
-            ["client_id"] = _options.ClientId,
+            ["client_id"] = clientId,
             ["code"] = code,
             ["code_verifier"] = codeVerifier
         };
@@ -192,7 +194,20 @@ internal sealed class BibleOAuthClient : IBibleOAuthClient
                 "The auth callback endpoint's redirect did not include an authorization code.");
 
         _logger.LogDebug("Identity callback exchange succeeded; redeeming the authorization code.");
-        return await ExchangeCodeAsync(code, codeVerifier, cancellationToken).ConfigureAwait(false);
+        var token = await ExchangeCodeAsync(code, codeVerifier, cancellationToken).ConfigureAwait(false);
+
+        if (token.GetUserName() is null && (!string.IsNullOrWhiteSpace(userName) || !string.IsNullOrWhiteSpace(userEmail) || !string.IsNullOrWhiteSpace(yvpId)))
+        {
+            var claims = new Dictionary<string, string>();
+            if (!string.IsNullOrWhiteSpace(userName)) claims["name"] = userName;
+            if (!string.IsNullOrWhiteSpace(userEmail)) claims["email"] = userEmail;
+            if (!string.IsNullOrWhiteSpace(yvpId)) claims["yvp_id"] = yvpId;
+            var syntheticIdToken = BuildUnsignedJwt(claims);
+            token = token with { IdToken = token.IdToken ?? syntheticIdToken };
+            await _tokenProvider.StoreTokenAsync(token, cancellationToken).ConfigureAwait(false);
+        }
+
+        return token;
     }
 
     /// <inheritdoc />
@@ -209,10 +224,12 @@ internal sealed class BibleOAuthClient : IBibleOAuthClient
 
         _logger.LogDebug("Refreshing access token.");
 
+        var clientId = ResolveClientId();
         var formData = new Dictionary<string, string>
         {
             ["grant_type"] = "refresh_token",
-            ["refresh_token"] = refreshToken
+            ["refresh_token"] = refreshToken,
+            ["client_id"] = clientId
         };
 
         var token = await PostTokenRequestAsync(formData, cancellationToken).ConfigureAwait(false);
@@ -366,6 +383,20 @@ internal sealed class BibleOAuthClient : IBibleOAuthClient
     // Private helpers
     // -------------------------------------------------------------------------
 
+    private string ResolveClientId()
+    {
+        if (!string.IsNullOrWhiteSpace(_options.ClientId))
+            return _options.ClientId;
+
+        if (!string.IsNullOrWhiteSpace(_apiOptions.AppKey))
+            return _apiOptions.AppKey;
+
+        throw new InvalidOperationException(
+            $"{nameof(BibleOAuthOptions)}.{nameof(BibleOAuthOptions.ClientId)} is not configured and " +
+            $"{nameof(BibleApiOptions)}.{nameof(BibleApiOptions.AppKey)} is also missing. " +
+            "Configure either value before starting the OAuth flow.");
+    }
+
     private string RequireAppKey()
     {
         if (string.IsNullOrWhiteSpace(_apiOptions.AppKey))
@@ -462,9 +493,36 @@ internal sealed class BibleOAuthClient : IBibleOAuthClient
                 body);
         }
 
-        var token = await response.Content
-            .ReadFromJsonAsync<OAuthTokenResponse>(cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        var body2 = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var token = System.Text.Json.JsonSerializer.Deserialize<OAuthTokenResponse>(body2);
+
+        if (token is not null)
+        {
+            var keys = System.Text.Json.JsonDocument.Parse(body2).RootElement
+                .EnumerateObject().Select(p => p.Name);
+            _logger.LogInformation(
+                "Token response top-level keys: {Keys}. IdToken present: {HasIdToken}. GetUserName()={UserName} GetEmail()={Email} YvpId={YvpId}",
+                string.Join(", ", keys), !string.IsNullOrEmpty(token.IdToken), token.GetUserName(), token.GetEmail(), token.YvpId);
+
+            if (!string.IsNullOrEmpty(token.IdToken))
+            {
+                var parts = token.IdToken.Split('.');
+                if (parts.Length >= 2)
+                {
+                    var payload = parts[1].Replace('-', '+').Replace('_', '/');
+                    switch (payload.Length % 4) { case 2: payload += "=="; break; case 3: payload += "="; break; }
+                    try
+                    {
+                        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+                        _logger.LogInformation("IdToken claims payload: {Claims}", decoded);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Could not decode IdToken payload for diagnostics.");
+                    }
+                }
+            }
+        }
 
         return token ?? throw new BibleEmptyResponseException(
             "OAuth token endpoint returned an empty response body.");
@@ -491,4 +549,11 @@ internal sealed class BibleOAuthClient : IBibleOAuthClient
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
+
+    private static string BuildUnsignedJwt(IReadOnlyDictionary<string, string> claims)
+    {
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(claims);
+        var payload = Base64UrlEncode(Encoding.UTF8.GetBytes(payloadJson));
+        return $"header.{payload}.signature";
+    }
 }

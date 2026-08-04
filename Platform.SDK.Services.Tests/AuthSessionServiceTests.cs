@@ -45,7 +45,18 @@ public sealed class AuthSessionServiceTests
     [Fact]
     public async Task GetCurrentSessionAsync_WhenTokenValid_ReturnsSignedInWithDisplayIdentity()
     {
-        var token = MakeToken(3600, DateTimeOffset.UtcNow);
+        var claims = new Dictionary<string, string> { ["name"] = "Jane Doe" };
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(claims);
+        var payload = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payloadJson));
+        var idToken = $"header.{payload}.signature";
+
+        var token = new OAuthTokenResponse
+        {
+            AccessToken = "access-token",
+            IdToken = idToken,
+            ExpiresIn = 3600,
+            ReceivedAt = DateTimeOffset.UtcNow
+        };
         var tokenProvider = new Mock<ITokenProvider>();
         tokenProvider.Setup(t => t.GetTokenAsync(It.IsAny<CancellationToken>())).ReturnsAsync(token);
 
@@ -54,7 +65,7 @@ public sealed class AuthSessionServiceTests
         var session = await sut.GetCurrentSessionAsync();
 
         session.IsSignedIn.Should().BeTrue();
-        session.DisplayName.Should().Be(token.GetDisplayIdentity());
+        session.DisplayName.Should().Be("Jane Doe");
     }
 
     [Fact]
